@@ -1,3 +1,4 @@
+import { ThesisSearch, kindLabel } from './ThesisSearch';
 'use client';
 import React, { useState, useEffect } from 'react';
 import {PublishedFields,AdminAnalytics} from './analytics';
@@ -596,11 +597,14 @@ const ResubmitConfirmModal = ({
 };
 
 type AcademicReference = {
+  catalogId?: string; sourceUrl?: string; documentUrl?: string;
   id?: string; schoolId?: string; doi: string; title: string; authors: string; year: string; journal: string;
   note: string; topic: string; reading: '未読' | '読書中' | '読了';
 };
 
+const referenceKey = (p: AcademicReference) => p.catalogId || p.doi;
 function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
+  const [source, setSource] = useState<'theses' | 'journals'>('theses');
   const [query, setQuery] = useState('');
   const [japaneseOnly, setJapaneseOnly] = useState(true);
   const [results, setResults] = useState<AcademicReference[]>([]);
@@ -616,8 +620,8 @@ function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
   const [topicFilter, setTopicFilter] = useState('');
   const request = React.useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
-  const persist = (next: AcademicReference[]) => setSaved(next.map(p => ({...p, id:p.id || `${cloud.profile.id}:${p.doi}`, schoolId:cloud.profile.school_id || undefined})));
-  const citation = (p: AcademicReference) => `${p.authors || '著者不明'} (${p.year || '年不明'}). ${p.title}. ${p.journal}. https://doi.org/${p.doi}`;
+  const persist = (next: AcademicReference[]) => setSaved(next.map(p => ({...p, id:p.id || `${cloud.profile.id}:${referenceKey(p)}`, schoolId:cloud.profile.school_id || undefined})));
+  const citation = (p: AcademicReference) => `${p.authors || '著者不明'} (${p.year || '年不明'}). ${p.title}. ${p.journal}. ${p.sourceUrl || `https://doi.org/${p.doi}`}`;
   const search = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!query.trim()) return;
@@ -645,7 +649,7 @@ function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
   const japaneseCandidate = (p: AcademicReference) => /[\u3040-\u30ff\u3400-\u9fff]/.test(p.title);
   const visibleResults = japaneseOnly ? results.filter(japaneseCandidate) : results;
   const displayed = view === 'search' ? visibleResults : saved.filter(p => !topicFilter.trim() || p.topic.toLowerCase().includes(topicFilter.trim().toLowerCase()));
-  const update = (doi: string, patch: Partial<AcademicReference>) => persist(saved.map(p => p.doi === doi ? { ...p, ...patch } : p));
+  const update = (doi: string, patch: Partial<AcademicReference>) => persist(saved.map(p => referenceKey(p) === doi ? { ...p, ...patch } : p));
   const copy = async () => {
     try { await navigator.clipboard.writeText(displayed.map(citation).join('\n\n')); setMessage('参考文献一覧をコピーしました。'); }
     catch { setMessage('コピーできませんでした。下の参考文献一覧を選択してコピーしてください。'); }
@@ -655,14 +659,20 @@ function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
       <div className="bg-white p-6 rounded-2xl border border-gray-200 space-y-2">
         <h2 className="text-lg font-bold text-gray-900">学術論文の検索</h2>
         <p className="text-sm text-gray-600">大学・研究機関などの論文を探し、自分の探究の参考文献として整理しましょう。</p>
-        <p className="text-xs text-gray-500">検索結果の確認・保存・メモはLTI内で行えます。現在の対象はCrossrefに登録された学術誌論文です。学部の卒業論文・大学リポジトリの横断検索にはまだ対応していません。</p>
+        <p className="text-xs text-gray-500">検索結果の確認・保存・メモはLTI内で行えます。大学の卒論・修論の収録目録と、Crossrefの学術誌論文を切り替えて検索できます。</p>
       </div>
+      <div className="flex gap-2" role="group" aria-label="検索対象">
+        <button type="button" aria-pressed={source==='theses'} onClick={()=>{setSource('theses');setView('search');}} className="border rounded-xl px-4 py-2">卒論・修論</button>
+        <button type="button" aria-pressed={source==='journals'} onClick={()=>{setSource('journals');setView('search');}} className="border rounded-xl px-4 py-2">学術誌論文</button>
+      </div>
+      {source === 'journals' && view === 'search' && <>
       <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={japaneseOnly} onChange={e => setJapaneseOnly(e.target.checked)} />日本語タイトルの候補に絞る</label>
       <p className="text-xs text-gray-500">タイトルにかな・漢字を含む文献を表示します。中国語の文献が含まれる場合や、英語タイトルで登録された日本語論文が除外される場合があります。本文の言語は掲載先で確認してください。</p>
       <form onSubmit={search} className="flex flex-wrap gap-2">
         <input aria-label="学術論文の検索キーワード" value={query} onChange={e => setQuery(e.target.value)} placeholder="研究キーワード・論文タイトル・著者名" maxLength={500} className="min-w-0 flex-1 border rounded-xl p-3 text-gray-900" />
         <button type="submit" disabled={loading || !query.trim()} className="px-5 rounded-xl bg-emerald-600 text-white font-bold disabled:opacity-50">{loading ? '検索中…' : '検索'}</button>
       </form>
+      </>}
       <div className="flex flex-wrap gap-3" role="group" aria-label="文献の表示切り替え">
         <button type="button" aria-pressed={view === 'search'} onClick={() => setView('search')} className={`px-4 py-2 rounded-xl ${view === 'search' ? 'bg-emerald-100 text-emerald-900' : 'bg-white text-gray-600'}`}>検索結果</button>
         <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')} className={`px-4 py-2 rounded-xl ${view === 'saved' ? 'bg-emerald-100 text-emerald-900' : 'bg-white text-gray-600'}`}>保存した文献（{saved.length}）</button>
@@ -670,19 +680,21 @@ function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
       <p className="text-xs text-gray-500">保存した文献はアカウントに保存されます。メモを編集したら「メモを保存」を押してください。</p>
       {storageError && <p role="alert" className="text-sm text-red-700">{storageError}</p>}
       {view === 'saved' && <input aria-label="研究テーマで絞り込み" value={topicFilter} onChange={e => setTopicFilter(e.target.value)} placeholder="研究テーマで絞り込み" className="w-full border rounded-xl p-3 text-gray-900" />}
+      {view === 'search' && source === 'theses' && <ThesisSearch savedKeys={saved.map(p=>p.catalogId||'')} onSave={p=>persist([...saved,{catalogId:p.key,doi:'',title:p.title,authors:p.authors,year:String(p.year),journal:p.university+'・'+kindLabel[p.kind],sourceUrl:p.sourceUrl,documentUrl:p.documentUrl,note:'',topic:'',reading:'未読'}])} />}
+      {(view === 'saved' || source === 'journals') && <>
       {view === 'search' && error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <p role="status" aria-live="polite" className="text-sm text-gray-600">{view === 'search' && loading ? '学術論文を検索しています…' : `${displayed.length} 件${view === 'search' && searched && !error ? `（取得した${results.length}件から表示・関連度順）` : ''}`}</p>
       {!loading && !displayed.length && <p className="p-8 text-center bg-white rounded-xl text-gray-500">{view === 'saved' ? '保存した文献がないか、条件に一致しません。' : searched ? (results.length ? '取得した結果に日本語タイトルの候補がありません。絞り込みを外すと他の結果を確認できます。' : 'この検索対象では見つかりませんでした。別のキーワードを試してください。') : 'キーワードを入力して検索してください。'}</p>}
       {displayed.map(p => {
-        const isSaved = saved.some(s => s.doi === p.doi);
-        return <article key={p.doi} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3">
+        const isSaved = saved.some(s => referenceKey(s) === referenceKey(p));
+        return <article key={referenceKey(p)} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3">
           <h3 className="font-bold text-gray-900">{p.title}</h3>
           <p className="text-xs text-gray-600 break-words">{p.authors || '著者情報なし'} / {p.year || '発表年不明'} / {p.journal}</p>
           <div className="flex flex-wrap items-center gap-4 text-sm">
-            <a href={`https://doi.org/${encodeURIComponent(p.doi)}`} target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline">掲載先を開く ↗</a>
-            {view === 'search' ? <button type="button" disabled={isSaved || !ready} onClick={() => persist([...saved, p])} className="text-emerald-700 font-bold disabled:text-gray-400">{isSaved ? '保存済み' : '参考文献に保存'}</button> : <button type="button" onClick={() => { if (window.confirm('この文献とメモを保存一覧から削除しますか？')) persist(saved.filter(s => s.doi !== p.doi)); }} className="text-red-600">削除</button>}
+            <a href={p.sourceUrl || `https://doi.org/${encodeURIComponent(p.doi)}`} target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline">掲載先を開く ↗</a>
+            {view === 'search' ? <button type="button" disabled={isSaved || !ready} onClick={() => persist([...saved, p])} className="text-emerald-700 font-bold disabled:text-gray-400">{isSaved ? '保存済み' : '参考文献に保存'}</button> : <button type="button" onClick={() => { if (window.confirm('この文献とメモを保存一覧から削除しますか？')) persist(saved.filter(s => referenceKey(s) !== referenceKey(p))); }} className="text-red-600">削除</button>}
           </div>
-          {view === 'saved' && <form key={JSON.stringify([p.topic,p.note,p.reading])} className="space-y-3" onSubmit={e=>{e.preventDefault();const form=new FormData(e.currentTarget);update(p.doi,{topic:String(form.get('topic')||''),note:String(form.get('note')||''),reading:String(form.get('reading')) as AcademicReference['reading']});}}>
+          {view === 'saved' && <form key={JSON.stringify([p.topic,p.note,p.reading])} className="space-y-3" onSubmit={e=>{e.preventDefault();const form=new FormData(e.currentTarget);update(referenceKey(p),{topic:String(form.get('topic')||''),note:String(form.get('note')||''),reading:String(form.get('reading')) as AcademicReference['reading']});}}>
             <label className="block text-xs">研究テーマ<input name="topic" defaultValue={p.topic} className="block w-full border rounded-lg p-2" /></label>
             <label className="block text-xs">読書状況<select name="reading" defaultValue={p.reading} className="border p-2">{['未読','読書中','読了'].map(v=><option key={v}>{v}</option>)}</select></label>
             <label className="block text-xs">参考になった点・自分の研究との違い<textarea name="note" defaultValue={p.note} rows={3} className="block w-full border rounded-lg p-2" /></label>
@@ -690,6 +702,7 @@ function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
           </form>}
         </article>;
       })}
+      </>}
       {view === 'saved' && displayed.length > 0 && <div className="bg-white p-5 border rounded-2xl space-y-3">
         <h3 className="font-bold text-gray-900">参考文献一覧（表示中の文献）</h3>
         <p className="text-xs text-gray-500">簡易形式です。提出先の書式と著者・発表年を確認してください。</p>
