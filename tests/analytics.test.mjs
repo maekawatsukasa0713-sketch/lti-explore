@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+import {readFileSync} from 'node:fs';
+const source=readFileSync(new URL('../analytics-data.ts',import.meta.url),'utf8');
+const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2020}}).outputText;
+const {distribution,selectPapers,paperDate,rate}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const papers=[{id:1,schoolId:'a',field:'物理',status:'公開中',submittedDate:'2026/09/01'}, {id:2,schoolId:'a',field:'生物',status:'承認待ち',submittedDate:'2026-09-02'}, {id:3,schoolId:'b',field:'物理',status:'公開中',submittedDate:'2026-08-31'}, {id:4,schoolId:'b',field:'',status:'公開停止',submittedDate:'不明'}];
+assert.deepEqual(distribution(papers.filter(p=>p.status==='公開中'),'field'),[{label:'物理',count:2,percent:100}]);
+assert.equal(selectPapers(papers,'a','2026-09-01','2026-09-01').length,1);
+assert.equal(selectPapers(papers,'','','').length,4);
+assert.equal(selectPapers(papers,'','2026-08-01','').length,3);
+assert.equal(paperDate('2026-02-30'),null);
+assert.equal(paperDate('2024/02/29'),'2024-02-29');
+assert.deepEqual(distribution([],'field'),[]);
+assert.equal(rate(0,0),'—');assert.equal(rate(1,4),'25.0%');
+assert.equal(distribution(papers,'field').reduce((n,r)=>n+r.percent,0),100);
+console.log('Analytics: 10 assertions passed');

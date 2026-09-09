@@ -1,0 +1,28 @@
+{
+  "name": "lti-supabase",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.115.0",
+    "lucide-react": "1.41.0",
+    "mammoth": "1.11.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "4.7.0",
+    "autoprefixer": "10.5.5",
+    "postcss": "8.5.28",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.9.3",
+    "vite": "6.4.3"
+  }
+}

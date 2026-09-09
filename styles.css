@@ -1,0 +1,8 @@
+@import "./fonts.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body { color: #111827; }
+button:disabled { cursor: not-allowed; }
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
