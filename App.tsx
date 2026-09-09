@@ -622,7 +622,7 @@ function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
     event.preventDefault();
     if (!query.trim()) return;
     request.current?.abort();
-    if (searchSource !== 'crossref') return;
+    if (searchSource !== 'crossref') { window.open(externalSearchUrl, '_blank', 'noopener,noreferrer'); return; }
     const controller = new AbortController(); request.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 20000);
     setLoading(true); setError(''); setResults([]); setSearched(true); setView('search');
