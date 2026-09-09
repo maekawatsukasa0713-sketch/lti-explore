@@ -602,6 +602,7 @@ type AcademicReference = {
 
 function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
   const [query, setQuery] = useState('');
+  const [searchSource, setSearchSource] = useState<'scholar' | 'cinii' | 'irdb' | 'crossref'>('scholar');
   const [results, setResults] = useState<AcademicReference[]>([]);
   const cloud = useCloud();
   const [saved, setSaved] = useCloudList<AcademicReference[]>('lti_academic_references', []);
@@ -621,6 +622,7 @@ function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
     event.preventDefault();
     if (!query.trim()) return;
     request.current?.abort();
+    if (searchSource !== 'crossref') return;
     const controller = new AbortController(); request.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 20000);
     setLoading(true); setError(''); setResults([]); setSearched(true); setView('search');
@@ -641,7 +643,12 @@ function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
       if (request.current === controller) setError(controller.signal.aborted ? '検索がタイムアウトしました。再検索してください。' : e instanceof Error ? e.message : '検索に失敗しました。');
     } finally { clearTimeout(timeout); if (request.current === controller) setLoading(false); }
   };
-  const displayed = view === 'search' ? results : saved.filter(p => !topicFilter.trim() || p.topic.toLowerCase().includes(topicFilter.trim().toLowerCase()));
+  const externalSearchUrl = searchSource === 'cinii'
+    ? 'https://cir.nii.ac.jp/articles?q=' + encodeURIComponent(query.trim()) + '&lang=ja'
+    : searchSource === 'irdb'
+    ? 'https://irdb.nii.ac.jp/search?search_api_fulltext=' + encodeURIComponent(query.trim())
+    : 'https://scholar.google.com/scholar?hl=ja&lr=lang_ja&q=' + encodeURIComponent(query.trim());
+  const displayed = view === 'search' ? (searchSource === 'crossref' ? results : []) : saved.filter(p => !topicFilter.trim() || p.topic.toLowerCase().includes(topicFilter.trim().toLowerCase()));
   const update = (doi: string, patch: Partial<AcademicReference>) => persist(saved.map(p => p.doi === doi ? { ...p, ...patch } : p));
   const copy = async () => {
     try { await navigator.clipboard.writeText(displayed.map(citation).join('\n\n')); setMessage('参考文献一覧をコピーしました。'); }
@@ -652,29 +659,37 @@ function AcademicPaperSearch({ storageKey }: { storageKey: string }) {
       <div className="bg-white p-6 rounded-2xl border border-gray-200 space-y-2">
         <h2 className="text-lg font-bold text-gray-900">学術論文の検索</h2>
         <p className="text-sm text-gray-600">大学・研究機関などの論文を探し、自分の探究の参考文献として整理しましょう。</p>
-        <p className="text-xs text-gray-500">検索元：Crossref。登録されている学術誌論文が対象です。本文の閲覧条件は掲載先で確認できます。</p>
+        <p className="text-xs text-gray-500">日本語文献はGoogle Scholarの日本語指定で検索できます。CiNiiでは国内の論文、大学リポジトリでは紀要・学位論文なども探せます。本文の言語・閲覧条件は掲載先で確認してください。</p>
       </div>
-      <form onSubmit={search} className="flex gap-2">
+      <label className="block text-sm font-bold text-gray-700">検索先
+        <select aria-label="学術論文の検索先" value={searchSource} onChange={e => { request.current?.abort(); request.current = null; setLoading(false); setResults([]); setError(''); setSearched(false); setSearchSource(e.target.value as typeof searchSource); }} className="block w-full mt-2 border rounded-xl p-3 bg-white">
+          <option value="scholar">日本語文献 — Google Scholar</option>
+          <option value="cinii">国内の学術論文 — CiNii Research</option>
+          <option value="irdb">大学の紀要・学位論文 — IRDB</option>
+          <option value="crossref">世界の学術誌論文 — Crossref（英語を含む）</option>
+        </select>
+      </label>
+      <form onSubmit={search} className="flex flex-wrap gap-2">
         <input aria-label="学術論文の検索キーワード" value={query} onChange={e => setQuery(e.target.value)} placeholder="研究キーワード・論文タイトル・著者名" maxLength={500} className="min-w-0 flex-1 border rounded-xl p-3 text-gray-900" />
-        <button type="submit" disabled={loading || !query.trim()} className="px-5 rounded-xl bg-emerald-600 text-white font-bold disabled:opacity-50">{loading ? '検索中…' : '検索'}</button>
+        {searchSource === 'crossref' ? <button type="submit" disabled={loading || !query.trim()} className="px-5 rounded-xl bg-emerald-600 text-white font-bold disabled:opacity-50">{loading ? '検索中…' : 'アプリ内で検索'}</button> : <a href={query.trim() ? externalSearchUrl : undefined} aria-disabled={!query.trim()} target="_blank" rel="noopener noreferrer" className={`px-5 py-3 rounded-xl bg-emerald-600 text-white font-bold ${!query.trim() ? 'opacity-50 pointer-events-none' : ''}`}>検索サイトを開く ↗</a>}
       </form>
       <div className="flex flex-wrap gap-2">{[
- ['Google Scholar','https://scholar.google.com/scholar?q='+encodeURIComponent(query)],
+ ['Google Scholar（日本語）','https://scholar.google.com/scholar?hl=ja&lr=lang_ja&q='+encodeURIComponent(query)],
  ['CiNii Research','https://cir.nii.ac.jp/all?q='+encodeURIComponent(query)],
  ['J-STAGE','https://www.jstage.jst.go.jp/result/global/-char/ja?globalSearchKey='+encodeURIComponent(query)],
  ['大学リポジトリ（IRDB）','https://irdb.nii.ac.jp/search?search_api_fulltext='+encodeURIComponent(query)],
  ['日本の卒業研究','https://www.google.com/search?q='+encodeURIComponent('site:ac.jp 卒業研究 '+query)]
- ].map(([label,url])=><a key={label} href={url} target="_blank" rel="noopener noreferrer" className="border bg-white p-3 rounded-xl text-sm">{label} ↗</a>)}</div><p className="text-xs text-gray-500">各サイトを別タブで検索します。卒業研究は公開されているものが対象です。</p>
+ ].map(([label,url])=><a key={label} href={url} target="_blank" rel="noopener noreferrer" className="border bg-white p-3 rounded-xl text-sm">{label} ↗</a>)}</div><p className="text-xs text-gray-500">Google Scholar・CiNii・IRDBは別タブに検索結果を表示します。日本語文献の指定はGoogle Scholarに適用されます。Crossrefを選ぶと、この画面で結果を表示し参考文献に保存できます。</p>
       <div className="flex flex-wrap gap-3" role="group" aria-label="文献の表示切り替え">
-        <button type="button" aria-pressed={view === 'search'} onClick={() => setView('search')} className={`px-4 py-2 rounded-xl ${view === 'search' ? 'bg-emerald-100 text-emerald-900' : 'bg-white text-gray-600'}`}>検索結果</button>
+        <button type="button" aria-pressed={view === 'search'} onClick={() => setView('search')} className={`px-4 py-2 rounded-xl ${view === 'search' ? 'bg-emerald-100 text-emerald-900' : 'bg-white text-gray-600'}`}>{searchSource === 'crossref' ? 'Crossrefの検索結果' : '検索案内'}</button>
         <button type="button" aria-pressed={view === 'saved'} onClick={() => setView('saved')} className={`px-4 py-2 rounded-xl ${view === 'saved' ? 'bg-emerald-100 text-emerald-900' : 'bg-white text-gray-600'}`}>保存した文献（{saved.length}）</button>
       </div>
       <p className="text-xs text-gray-500">保存した文献はアカウントに保存されます。メモを編集したら「メモを保存」を押してください。</p>
       {storageError && <p role="alert" className="text-sm text-red-700">{storageError}</p>}
       {view === 'saved' && <input aria-label="研究テーマで絞り込み" value={topicFilter} onChange={e => setTopicFilter(e.target.value)} placeholder="研究テーマで絞り込み" className="w-full border rounded-xl p-3 text-gray-900" />}
       {view === 'search' && error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      <p role="status" aria-live="polite" className="text-sm text-gray-600">{view === 'search' && loading ? '学術論文を検索しています…' : `${displayed.length} 件${view === 'search' && searched && !error ? '（関連度順・最大20件）' : ''}`}</p>
-      {!loading && !displayed.length && <p className="p-8 text-center bg-white rounded-xl text-gray-500">{view === 'saved' ? '保存した文献がないか、条件に一致しません。' : searched ? '別のキーワードや英語の研究用語でも試してください。' : 'キーワードを入力して検索してください。'}</p>}
+      <p role="status" aria-live="polite" className="text-sm text-gray-600">{view === 'search' && searchSource !== 'crossref' ? '選んだ検索サイトの結果を別タブで開きます。' : view === 'search' && loading ? '学術論文を検索しています…' : `${displayed.length} 件${view === 'search' && searched && !error ? '（関連度順・最大20件）' : ''}`}</p>
+      {!loading && !displayed.length && <p className="p-8 text-center bg-white rounded-xl text-gray-500">{view === 'saved' ? '保存した文献がないか、条件に一致しません。' : searchSource !== 'crossref' ? '研究キーワードを入力し「検索サイトを開く」を押してください。' : searched ? 'Crossrefでは見つかりませんでした。検索先を日本語文献・国内の学術論文に切り替えて試してください。' : 'キーワードを入力して検索してください。'}</p>}
       {displayed.map(p => {
         const isSaved = saved.some(s => s.doi === p.doi);
         return <article key={p.doi} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3">
