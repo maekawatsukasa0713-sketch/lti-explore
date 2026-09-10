@@ -1,5 +1,18 @@
 export type Paper = { doi:string; catalogId?:string; title:string; authors:string; year:string; journal:string; sourceUrl:string; documentUrl?:string; providers:string[]; language?:string; paperType?:string };
 export function safeUrl(value:unknown): string|undefined { try { const u=new URL(String(value));return ['https:','http:'].includes(u.protocol)?u.href:undefined; } catch { return undefined; } }
+export function japaneseRank(p:Pick<Paper,'language'|'title'>):number {
+ const language=(p.language||'').toLowerCase().split('-')[0];
+ if(language==='ja'||language==='jpn')return 2;
+ if(language&&language!=='und')return 0;
+ return /[\u3040-\u30ff]/.test(p.title)?1:0;
+}
+export function paperLanguageLabel(p:Pick<Paper,'language'|'title'>):string {
+ const language=(p.language||'').toLowerCase().split('-')[0];
+ if(language==='ja'||language==='jpn')return '日本語（登録情報）';
+ if(language==='en'||language==='eng')return '英語（登録情報）';
+ if(japaneseRank(p)===1)return '日本語タイトル・本文言語未確認';
+ return language&&language!=='und'?'登録言語：'+language:'本文言語未登録';
+}
 export const doiKey=(v:unknown)=>String(v||'').replace(/^https?:\/\/(dx\.)?doi\.org\//i,'').trim().toLowerCase();
 const plain=(v:unknown)=>String(v||'').replace(/<[^>]*>/g,'').trim();
 export function fromCrossref(p:any):Paper|null {

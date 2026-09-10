@@ -5,7 +5,12 @@ import path from 'node:path';
 const dir=await mkdtemp(path.resolve('.search-test-'));
 try{
  await build({entryPoints:['supabase/functions/paper-search/search.ts'],outfile:path.join(dir,'search.mjs'),bundle:true,platform:'node',format:'esm'});
- const {fromCrossref,fromCore,mergePapers,runSearch,safeUrl}=await import(path.join(dir,'search.mjs'));
+ const {fromCrossref,fromCore,mergePapers,runSearch,safeUrl,japaneseRank,paperLanguageLabel}=await import(path.join(dir,'search.mjs'));
+ assert.equal(japaneseRank({title:'English title',language:'ja'}),2);
+ assert.equal(japaneseRank({title:'磁性流体'}),0);
+ assert.equal(japaneseRank({title:'流体の研究'}),1);
+ assert.equal(japaneseRank({title:'流体の研究',language:'en'}),0);
+ assert.equal(paperLanguageLabel({title:'English title',language:'jpn'}),'日本語（登録情報）');
  const cr=fromCrossref({DOI:'10.1000/ABC',title:['Paper'],link:[{URL:'https://publisher.example/paid.pdf'}]});
  const core=fromCore({id:1,doi:'https://doi.org/10.1000/abc',title:'Paper',downloadUrl:'https://repository.example/full.pdf'});
  const merged=mergePapers([[cr],[core]]);assert.equal(merged.length,1);assert.equal(merged[0].documentUrl,core.documentUrl);assert.deepEqual(merged[0].providers,['Crossref','CORE']);
