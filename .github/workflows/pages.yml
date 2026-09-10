@@ -18,6 +18,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node tests/paper-search.test.mjs
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
