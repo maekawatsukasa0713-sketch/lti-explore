@@ -1,3 +1,7 @@
+import { ResearchLibrary } from './ResearchLibrary';
+import { ResearchDetail } from './ResearchDetail';
+import { ReviewPanels } from './ReviewPanels';
+import { analysisInput, invokeResearchAI } from './research-ai';
 import { ScholarlySearch } from './ScholarlySearch';
 'use client';
 import React, { useState, useEffect } from 'react';
@@ -117,6 +121,9 @@ type AiReviewResult = {
 type AiReviewItem = {
   id: string;
   fileName: string;
+  sourceFile?: File;
+  generatedAt?: string;
+  basis?: string;
   paperTitle: string;
   status: 'processing' | 'done' | 'error';
   error?: string;
@@ -2604,19 +2611,27 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     // ----------------------------------------
 
     // Wordファイル1件をAIに送り、修正点・アドバイス・追加実験の方向性を取得する
-    const requestAiPaperReview = async (_file: File): Promise<{ title?: string } & AiReviewResult> => {
-      throw new Error('AI連携は未設定です。ファイルはAIへ送信していません。');
+    const requestAiPaperReview = async (file: File, force=false): Promise<{ title?: string; generatedAt?: string; basis?: string } & AiReviewResult> => {
+      const input = await analysisInput(file, file.name);
+      return invokeResearchAI({mode:'review',title:file.name,...input,force});
+    };
+    const regenerateReview = async (item: AiReviewItem) => {
+      if(!item.sourceFile||item.sent)return;
+      updateAiReviewItem(item.id,{status:'processing',error:undefined});
+      try { const res=await requestAiPaperReview(item.sourceFile,true);updateAiReviewItem(item.id,{status:'done',paperTitle:res.title||item.paperTitle,result:{corrections:res.corrections,advice:res.advice,nextExperiments:res.nextExperiments},generatedAt:res.generatedAt,basis:res.basis}); }
+      catch(e){updateAiReviewItem(item.id,{status:'error',error:e instanceof Error?e.message:'解析に失敗しました。'});}
     };
 
     // 複数のWordファイルをドロップ/選択したら、1件ずつAI添削をリクエストする
     const handleAiReviewFilesSelected = async (files: FileList | null) => {
       if (!files || files.length === 0) return;
-      const fileArray = Array.from(files).filter(f => /\.docx$/i.test(f.name));
+      const fileArray = Array.from(files).filter(f => /\.(docx|pdf)$/i.test(f.name));
       if (fileArray.length === 0) return;
 
       const initialItems: AiReviewItem[] = fileArray.map((f, i) => ({
         id: `${Date.now()}-${i}-${f.name}`,
         fileName: f.name,
+        sourceFile: f,
         paperTitle: f.name.replace(/\.docx$/i, ''),
         status: 'processing',
         result: { corrections: [], advice: [], nextExperiments: [] },
@@ -2634,6 +2649,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
             ...it,
             status: 'done',
             paperTitle: res.title || it.paperTitle,
+            generatedAt: res.generatedAt,
+            basis: res.basis,
             result: {
               corrections: res.corrections || [],
               advice: res.advice || [],
@@ -2644,7 +2661,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
           setAiReviewItems(prev => prev.map(it => it.id === itemId ? {
             ...it,
             status: 'error',
-            error: 'AI添削はまだ準備中です（バックエンド実装後に利用可能になります）。内容は手動で入力・編集して送信フローを確認できます。',
+            error: err instanceof Error ? err.message : 'AI添削に失敗しました。',
           } : it));
         }
       }
@@ -2883,86 +2900,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                 </div>
 
               ) : currentTab === 'みんなの論文' ? (
-                <div className="space-y-6">
-                  <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-bold text-gray-900">みんなの論文ライブラリ</h2>
-                      <p className="text-xs font-medium text-gray-500">LTI事務局の承認を得て公開された全国の高校生の優れた探究論文を閲覧・指導の参考にできます。</p>
-                    </div>
-                    <span className="text-xs font-bold bg-orange-50 text-orange-700 px-3 py-1.5 rounded-xl">
-                      公開中 {publishedList.filter(p => (teacherPaperFieldFilter === 'すべて' || p.field === teacherPaperFieldFilter) && matchesPaperSearch(p, teacherPaperSearchQuery)).length} / {publishedList.length} 件
-                    </span>
-                  </div>
-
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={teacherPaperSearchQuery}
-                      onChange={(e) => setTeacherPaperSearchQuery(e.target.value)}
-                      placeholder="タイトル・著者・学校名で検索..."
-                      className="w-full max-w-md pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {['すべて', ...PAPER_FIELD_OPTIONS].map((f) => {
-                      const count = f === 'すべて' ? publishedList.length : publishedList.filter(p => p.field === f).length;
-                      return (
-                        <button
-                          key={f}
-                          onClick={() => setTeacherPaperFieldFilter(f)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors flex items-center gap-1.5 ${
-                            teacherPaperFieldFilter === f
-                              ? 'bg-orange-500 border-orange-500 text-white'
-                              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          {f}
-                          <span className={`text-[10px] ${teacherPaperFieldFilter === f ? 'text-orange-100' : 'text-gray-400'}`}>{count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {publishedList.filter(p => (teacherPaperFieldFilter === 'すべて' || p.field === teacherPaperFieldFilter) && matchesPaperSearch(p, teacherPaperSearchQuery)).length === 0 ? (
-                      <div className="col-span-2 p-12 text-center bg-white rounded-2xl border border-gray-200 text-gray-400 text-xs font-bold">
-                        {publishedList.length === 0 ? '現在公開されている論文はありません。' : '条件に一致する論文が見つかりませんでした。'}
-                      </div>
-                    ) : (
-                      publishedList
-                        .filter(p => (teacherPaperFieldFilter === 'すべて' || p.field === teacherPaperFieldFilter) && matchesPaperSearch(p, teacherPaperSearchQuery))
-                        .map((paper) => (
-                        <div key={paper.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:border-orange-200 transition-all space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-orange-50 text-orange-700">
-                              {paper.field}
-                            </span>
-                            <span className="text-xs text-gray-400 font-mono">公開日: {paper.publishedDate}</span>
-                          </div>
-                          <h3 className="font-bold text-base text-gray-900 leading-snug">{paper.title}</h3>
-                          <div className="text-xs text-gray-600 space-y-0.5 font-medium">
-                            <p>🏫 {paper.schoolName}</p>
-                            <p>👤 著者: {paper.author} （指導: {paper.submittedByTeacherName} 先生）</p>
-                          </div>
-                          {paper.abstract && (
-                            <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-xl line-clamp-2">{paper.abstract}</p>
-                          )}
-                          <div className="pt-2 flex justify-end">
-                            <button
-                              onClick={() => setPreviewPaper(paper)}
-                              className="px-3.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs rounded-xl transition-colors flex items-center gap-1"
-                            >
-                              <Eye className="w-3.5 h-3.5" /> 全文・詳細を確認
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
+                detailPaper ? <ResearchDetail key={String(detailPaper.id)} paper={detailPaper} onBack={()=>setDetailPaper(null)} /> : <ResearchLibrary papers={papers} onOpen={p=>setDetailPaper(p)} />
               ) : currentTab === '教材' ? (
                 <div className="space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
@@ -3403,7 +3341,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                     <h2 className="text-lg font-bold text-gray-900">AI添削</h2>
                     <p className="text-sm font-medium text-gray-500">
-                      生徒の探究論文（Word）をドロップすると、AIが修正点・アドバイス・追加実験の方向性を指摘します。内容を確認・編集してから、生徒へメッセージとして送信できます。
+                      生徒の探究論文（Word・PDF）をドロップすると、AIが修正点・アドバイス・追加実験の方向性を指摘します。内容を確認・編集してから、生徒へメッセージとして送信できます。
                     </p>
                   </div>
 
@@ -3411,15 +3349,15 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     <div className="border-2 border-dashed border-gray-300 hover:border-orange-400 rounded-xl p-6 text-center bg-gray-50 transition-colors relative cursor-pointer">
                       <input
                         type="file"
-                        accept=".docx"
+                        accept=".docx,.pdf"
                         multiple
                         onChange={(e) => { handleAiReviewFilesSelected(e.target.files); e.target.value = ''; }}
                         className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                       />
                       <div className="space-y-1 pointer-events-none">
                         <Bot className="w-8 h-8 text-orange-500 mx-auto" />
-                        <p className="text-xs font-bold text-gray-700">クリックまたはドラッグ＆ドロップでWordファイル（.docx）を選択</p>
-                        <p className="text-[10px] text-gray-400">※ .docx形式のみ対応。複数ファイルをまとめて選択できます。</p>
+                        <p className="text-xs font-bold text-gray-700">クリックまたはドラッグ＆ドロップでWord・PDFファイルを選択</p>
+                        <p className="text-[10px] text-gray-400">※ .docx・.pdf形式、1ファイル8MBまで。原稿をAIに送信します。</p>
                       </div>
                     </div>
                   </div>
@@ -3474,43 +3412,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">{item.error}</p>
                           )}
 
-                          {item.status !== 'processing' && (
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                              <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-gray-500">修正点（1行1項目）</label>
-                                <textarea
-                                  value={item.result.corrections.join('\n')}
-                                  onChange={(e) => updateAiReviewResultField(item.id, 'corrections', e.target.value)}
-                                  disabled={item.sent}
-                                  rows={5}
-                                  placeholder="例: 3章の実験条件（温度・pH）の記載が不足している"
-                                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 disabled:bg-gray-100 disabled:text-gray-500 resize-none"
-                                ></textarea>
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-gray-500">アドバイス（1行1項目）</label>
-                                <textarea
-                                  value={item.result.advice.join('\n')}
-                                  onChange={(e) => updateAiReviewResultField(item.id, 'advice', e.target.value)}
-                                  disabled={item.sent}
-                                  rows={5}
-                                  placeholder="例: 先行研究との比較を考察に加えるとより説得力が増す"
-                                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 disabled:bg-gray-100 disabled:text-gray-500 resize-none"
-                                ></textarea>
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-gray-500">追加実験の方向性（1行1項目）</label>
-                                <textarea
-                                  value={item.result.nextExperiments.join('\n')}
-                                  onChange={(e) => updateAiReviewResultField(item.id, 'nextExperiments', e.target.value)}
-                                  disabled={item.sent}
-                                  rows={5}
-                                  placeholder="例: 培養温度を5段階に変えて分解速度の違いを比較する"
-                                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 disabled:bg-gray-100 disabled:text-gray-500 resize-none"
-                                ></textarea>
-                              </div>
-                            </div>
-                          )}
+                          {item.status !== 'processing' && <ReviewPanels result={item.result} generatedAt={item.generatedAt} basis={item.basis} readOnly={item.sent} onChange={(key,value)=>updateAiReviewResultField(item.id,key,value)}/>}
+                          {item.sourceFile && !item.sent && item.status !== 'processing' && <button type="button" onClick={()=>void regenerateReview(item)} className="text-sm underline text-slate-600">結果を再生成</button>}
 
                           {item.status !== 'processing' && !item.sent && (
                             <div className="pt-3 border-t border-gray-100 space-y-3">
@@ -4167,94 +4070,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   storageKey={`lti_academic_references:${JSON.stringify([schoolId, currentStudentId])}`}
                 />
               ) : currentTab === 'みんなの論文' ? (
-                detailPaper ? (
-                  <PaperDetailSplitView
-                    detailPaper={detailPaper}
-                    onBack={() => { setDetailPaper(null); setAiSuggestions([]); setAiError(''); }}
-                    aiSuggestions={aiSuggestions}
-                    aiLoading={aiLoading}
-                    aiError={aiError}
-                    onRetry={() => fetchContinuationSuggestions(detailPaper)}
-                  />
-                ) : (
-                <div className="space-y-6">
-                  <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-bold text-gray-900">みんなの論文ライブラリ</h2>
-                      <p className="text-xs font-medium text-gray-500">全国の高校生が執筆した素晴らしい探究論文を参考にしてみましょう。</p>
-                    </div>
-                  </div>
-
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      aria-label="論文を検索"
-                      value={studentPaperSearchQuery}
-                      onChange={(e) => setStudentPaperSearchQuery(e.target.value)}
-                      placeholder="タイトル・著者・学校名・分野で検索..."
-                      className="w-full max-w-md pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-emerald-400"
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2" role="group" aria-label="論文の研究分野">
-                    {['すべて', ...studentPaperFields].map((field) => {
-                      const count = field === 'すべて'
-                        ? studentSearchResults.length
-                        : studentSearchResults.filter(p => p.field === field).length;
-                      const selected = studentPaperFieldFilter === field;
-                      return (
-                        <button
-                          key={field}
-                          type="button"
-                          aria-pressed={selected}
-                          onClick={() => setStudentPaperFieldFilter(field)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors flex items-center gap-1.5 ${selected ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-emerald-50'}`}
-                        >
-                          {field}<span className={selected ? 'text-emerald-100' : 'text-gray-400'}>{count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-gray-500" role="status" aria-live="polite">
-                      公開中 {publishedList.length} 件中 {studentFilteredPapers.length} 件を表示
-                    </p>
-                    {(studentPaperFieldFilter !== 'すべて' || studentPaperSearchQuery !== '') && (
-                      <button type="button" onClick={() => { setStudentPaperFieldFilter('すべて'); setStudentPaperSearchQuery(''); }} className="text-xs font-bold text-emerald-700 hover:underline">
-                        絞り込みを解除
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {studentFilteredPapers.length === 0 ? (
-                      <div className="col-span-full p-12 text-center bg-white rounded-2xl border border-gray-200 text-gray-400 text-xs font-bold">
-                        {publishedList.length === 0 ? '現在公開されている論文はありません。' : '条件に一致する論文が見つかりませんでした。'}
-                      </div>
-                    ) : (
-                      studentFilteredPapers.map((paper) => (
-                        <div key={paper.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-3">
-                          <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
-                            {paper.field}
-                          </span>
-                          <h3 className="font-bold text-base text-gray-900">{paper.title}</h3>
-                          <p className="text-xs text-gray-500">🏫 {paper.schoolName} | 著者: {paper.author}</p>
-                          <div className="pt-2 flex justify-end">
-                            <button
-                              onClick={() => openPaperDetail(paper)}
-                              className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl transition-colors flex items-center gap-1"
-                            >
-                              <Eye className="w-3.5 h-3.5" /> 論文を読む
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-                )
-
+                detailPaper ? <ResearchDetail key={String(detailPaper.id)} paper={detailPaper} onBack={()=>setDetailPaper(null)} /> : <ResearchLibrary papers={papers} onOpen={p=>setDetailPaper(p)} />
               ) : currentTab === '先生からのフィードバック' ? (
                 <div className="space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
