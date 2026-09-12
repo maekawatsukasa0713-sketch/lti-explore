@@ -1256,7 +1256,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
     const handleApprovePaper = async (id:number) => {
       if(publicationBusy)return;
-      if(!window.confirm('公開用ファイルと著者表記を確認しましたか？承認すると成果を公開し、Claudeへ一度だけ送信してAI要約・継続提案を保存します。'))return;
+      if(!window.confirm('公開用ファイルと著者表記を確認しましたか？承認すると成果を公開します。AI解析は現在準備中です。'))return;
       setPublicationBusy(true);setPublicationMessage('公開処理・AI解析中です…');
       try{setPublicationMessage(await publishResearch(id));await cloud.reload();}catch(e){setPublicationMessage((e as Error).message||'公開処理に失敗しました。');}finally{setPublicationBusy(false);}
     };
@@ -2792,7 +2792,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   >
                     <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />
                     {Icon && <Icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-orange-500' : 'text-gray-400'}`} />}
-                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-[10px] ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>
+                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-[10px] ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>}
                   </button>
                 );
               })}
@@ -3019,7 +3019,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         rows={4}
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 resize-none"
                       ></textarea>
-                      <p className="text-[10px] text-gray-400">記入した場合は著者の要旨として表示します。AI要約とは別に扱います。ファイル内の氏名も確認した公開用ファイルを提出してください。AI解析はLTIの公開承認時に一度だけ行います。</p>
+                      <p className="text-[10px] text-gray-400">記入した場合は著者の要旨として表示します。AI要約とは別に扱います。ファイル内の氏名も確認した公開用ファイルを提出してください。AI要約・継続提案は公開承認時に一度だけ生成する予定です（現在準備中）。</p>
                     </div>
 
                     <div className="space-y-2 pt-2">
@@ -3782,7 +3782,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   >
                     <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />
                     {Icon && <Icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`} />}
-                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-[10px] ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>
+                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-[10px] ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>}
                   </button>
                 );
               })}

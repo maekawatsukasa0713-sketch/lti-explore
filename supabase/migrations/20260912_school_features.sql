@@ -31,3 +31,8 @@ create policy feature_read on public.lti_records as restrictive for select to au
 create policy feature_insert on public.lti_records as restrictive for insert to authenticated with check (public.lti_record_feature_enabled(kind,status,true));
 create policy feature_update on public.lti_records as restrictive for update to authenticated using (public.lti_record_feature_enabled(kind,status,true)) with check (public.lti_record_feature_enabled(kind,status,true));
 create policy feature_delete on public.lti_records as restrictive for delete to authenticated using (public.lti_record_feature_enabled(kind,status,true));
+
+alter function public.lti_feature_enabled(text) security invoker;
+alter function public.lti_record_feature_enabled(text,text,boolean) security invoker;
+revoke all on function public.lti_feature_enabled(text) from anon;
+revoke all on function public.lti_record_feature_enabled(text,text,boolean) from anon;
