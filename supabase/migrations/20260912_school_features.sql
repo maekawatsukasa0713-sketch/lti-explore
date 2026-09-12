@@ -36,3 +36,4 @@ alter function public.lti_feature_enabled(text) security invoker;
 alter function public.lti_record_feature_enabled(text,text,boolean) security invoker;
 revoke all on function public.lti_feature_enabled(text) from anon;
 revoke all on function public.lti_record_feature_enabled(text,text,boolean) from anon;
+alter policy feature_read on public.lti_records using (public.lti_record_feature_enabled(kind,status,false) and (kind <> 'papers' or status <> '公開中' or public.lti_feature_enabled('みんなの論文') or school_id = public.lti_school()));
