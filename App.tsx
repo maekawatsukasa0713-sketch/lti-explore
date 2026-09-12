@@ -1,4 +1,4 @@
-import {publishResearch} from './publish-research';
+import {InsightApproval} from './InsightApproval';
 import {featureMode,FeatureUnavailable} from './SchoolFeatures';
 import { ResearchLibrary } from './ResearchLibrary';
 import { ResearchDetail } from './ResearchDetail';
@@ -1002,7 +1002,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
   // 先生側：公開申請用フォームステート
   const [publicationMessage,setPublicationMessage]=useState('');
-  const [publicationBusy,setPublicationBusy]=useState(false);
+  const [insightPaper,setInsightPaper]=useState<number|null>(null);
   const [teacherPaperTitle, setTeacherPaperTitle] = useState('');
   const [editingPaper,setEditingPaper]=useState<PublicPaper|null>(null);
   const [teacherPaperAuthor, setTeacherPaperAuthor] = useState('');
@@ -1254,12 +1254,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const pendingPapers = papers.filter(p => p.status === '承認待ち');
     const publishedPapers = papers.filter(p => p.status === '公開中');
 
-    const handleApprovePaper = async (id:number) => {
-      if(publicationBusy)return;
-      if(!window.confirm('公開用ファイルと著者表記を確認しましたか？承認すると成果を公開します。AI解析は現在準備中です。'))return;
-      setPublicationBusy(true);setPublicationMessage('公開処理・AI解析中です…');
-      try{setPublicationMessage(await publishResearch(id));await cloud.reload();}catch(e){setPublicationMessage((e as Error).message||'公開処理に失敗しました。');}finally{setPublicationBusy(false);}
-    };
+    const handleApprovePaper = (id:number) => setInsightPaper(id);
 
     const handleUnpublishPaper = (id: number) => {
       setPapers(papers.map(p => p.id === id ? { ...p, status: '公開停止' } : p));
@@ -1390,6 +1385,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
           <main className="flex-1 p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto space-y-8">
               
+              {insightPaper!==null&&<InsightApproval id={insightPaper} onClose={()=>setInsightPaper(null)} onSaved={async(message)=>{setPublicationMessage(message);await cloud.reload();}}/>}
               {publicationMessage&&<p role="status" className="bg-indigo-50 border rounded-xl p-4 text-sm">{publicationMessage}</p>}
               {['ダッシュボード','データ分析','利用状況レポート'].includes(ltiCurrentTab) ? (<AdminAnalytics key={ltiCurrentTab} papers={papers} schools={cloud.schools} profiles={cloud.profiles} rows={cloud.rows} reload={cloud.reload} page={ltiCurrentTab}/>) : ltiCurrentTab === 'ホーム' ? (
                 <div className="space-y-8">
@@ -3019,7 +3015,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         rows={4}
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 resize-none"
                       ></textarea>
-                      <p className="text-[10px] text-gray-400">記入した場合は著者の要旨として表示します。AI要約とは別に扱います。ファイル内の氏名も確認した公開用ファイルを提出してください。AI要約・継続提案は公開承認時に一度だけ生成する予定です（現在準備中）。</p>
+                      <p className="text-[10px] text-gray-400">記入した場合は著者の要旨として表示します。AI要約とは別に扱います。ファイル内の氏名も確認した公開用ファイルを提出してください。AI要約・継続提案は公開前に一度だけ生成し、LTIが確認・編集してから公開します。</p>
                     </div>
 
                     <div className="space-y-2 pt-2">
