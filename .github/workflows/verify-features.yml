@@ -1,0 +1,21 @@
+name: Verify school features and AI registration
+on:
+  push:
+    branches: [fix/school-features]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node tests/research-ai.test.mjs
+      - run: node tests/registration.test.mjs
+      - run: npm run build

@@ -1,3 +1,4 @@
+import type {FeatureSettings} from './SchoolFeatures';
 import {PasswordInput} from './PasswordInput';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {Building2,ShieldCheck,ChevronRight,ArrowLeft,User,Lock} from 'lucide-react';
@@ -7,7 +8,7 @@ import {schoolLoginEmail,PasswordChange,MfaSetup,AccountManagement} from './acco
 export {supabase} from './client';
 export type Profile = { deleted_at?:string|null; attendance_number?:number|null; login_id?:string|null; must_change_password?:boolean; initial_password_expires_at?:string|null; session_valid_after?:string; id:string; school_id:string|null; role:'admin'|'teacher'|'student'; active:boolean; name:string; class:string; dept:string; theme:string };
 type Row = { kind:string; id:string; owner_id:string; data:any; version:number };
-type School = {id:string;name:string;deleted_at?:string|null};
+type School = {id:string;name:string;feature_settings?:FeatureSettings;deleted_at?:string|null};
 type Store = { profile:Profile; profiles:Profile[]; schools:School[]; rows:Row[]; save:(kind:string, before:any[], next:any[])=>Promise<void>; reload:()=>Promise<void>; signOut:()=>Promise<void> };
 const Cloud = createContext<Store|null>(null);
 export function useCloud(){const c=useContext(Cloud);if(!c)throw new Error('ログインが必要です');return c;}
@@ -107,8 +108,8 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
   finally{lock.current=false;setBusy(false);}
  };
  const auth=async(e:React.FormEvent)=>{e.preventDefault();setAuthError('');setMessage('');setBusy(true);try{
-  if(mode==='reset'){const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});if(error)throw error;setMessage('登録済みの場合、再設定メールが届きます。');}
-  else if(mode==='signup'){const {error}=await supabase.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin+window.location.pathname}});if(error)throw error;setMessage('登録を受け付けました。確認メールが届いた場合は認証後にログインしてください。利用開始には運営の承認が必要です。');}
+  if(mode==='reset'){const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:'https://maekawatsukasa0713-sketch.github.io/lti-explore/'});if(error)throw error;setMessage('登録済みの場合、再設定メールが届きます。');}
+  else if(mode==='signup'){const {error}=await supabase.auth.signUp({email,password,options:{emailRedirectTo:'https://maekawatsukasa0713-sketch.github.io/lti-explore/'}});if(error)throw error;setMessage('登録を受け付けました。確認メールが届いた場合は認証後にログインしてください。利用開始には運営の承認が必要です。');}
   else {const authEmail=loginType==='school'?await schoolLoginEmail(loginSchool,loginId):email;const {error}=await supabase.auth.signInWithPassword({email:authEmail,password});if(error)throw error;if(loginType==='school'){try{localStorage.setItem('lti-login-school',loginSchool.trim().toLowerCase());}catch{}}}
   setPassword('');
  }catch(e){setAuthError((e as any)?.message||'認証に失敗しました');}finally{setBusy(false);}};

@@ -12,6 +12,7 @@ Deno.serve(async(req:Request)=>{
   const auth=await fetch(Deno.env.get('SUPABASE_URL')+'/auth/v1/user',{headers:{Authorization:token,apikey:Deno.env.get('SUPABASE_ANON_KEY')!},signal:AbortSignal.timeout(8000)});
   if(!auth.ok)return reply({error:'再ログインしてください。'},401);
   const user=await auth.json();if(!user.id)return reply({error:'再ログインしてください。'},401);
+  const permission=await fetch(Deno.env.get('SUPABASE_URL')+'/rest/v1/rpc/lti_feature_enabled',{method:'POST',headers:{Authorization:token,apikey:Deno.env.get('SUPABASE_ANON_KEY')!,'content-type':'application/json'},body:JSON.stringify({tab_name:'学術論文の検索'}),signal:AbortSignal.timeout(8000)});if(!permission.ok||await permission.json()!==true)return reply({error:'この学校では学術論文検索を利用できません。'},403);
   const text=await req.text();if(text.length>3000)return reply({error:'検索語が長すぎます。'},400);
   let body;try{body=JSON.parse(text);}catch{return reply({error:'検索条件を読み取れません。'},400);}
   const query=typeof body.query==='string'?body.query.trim():'';const page=body.page??0;

@@ -1,3 +1,4 @@
+import {claimPaper} from './registration.ts';
 const headers={'Access-Control-Allow-Origin':'https://maekawatsukasa0713-sketch.github.io','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, traceparent, tracestate, baggage','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin','Content-Type':'application/json','Cache-Control':'no-store'};
 const reply=(data:unknown,status=200)=>new Response(JSON.stringify(data),{headers,status});
 const stringArray={type:'array',items:{type:'string'},maxItems:8};
@@ -19,22 +20,26 @@ Deno.serve(async(req:Request)=>{
   let body;try{body=JSON.parse(raw);}catch{return reply({error:'リクエストを読み取れません。'},400);}
   const key=Deno.env.get('ANTHROPIC_API_KEY');const model=Deno.env.get('ANTHROPIC_MODEL')||'claude-haiku-4-5-20251001';
   if(body.mode==='status')return reply({configured:!!key});
-  if(!['analyze','review'].includes(body.mode))return reply({error:'解析方法が不正です。'},400);
+  if(!['register','review'].includes(body.mode))return reply({error:'解析方法が不正です。'},400);
   if(body.mode==='review'&&!['teacher','admin'].includes(profile.role))return reply({error:'AI添削は教員・運営向けの機能です。'},403);
+  if(body.mode==='register'&&profile.role!=='admin')return reply({error:'公開時のAI解析はLTI運営が行います。'},403);
+  if(body.mode==='review'){const permission=await fetch(base+'/rest/v1/rpc/lti_feature_enabled',{method:'POST',headers:{...authHeaders,'content-type':'application/json'},body:JSON.stringify({tab_name:'AI添削'}),signal:AbortSignal.timeout(8000)});if(!permission.ok||await permission.json()!==true)return reply({error:'この学校ではAI添削を利用できません。'},403);}
   if(!key)return reply({error:'AI連携の設定待ちです。LTI運営がAnthropic APIキーを設定してください。'},503);
   const text=typeof body.text==='string'?body.text:'';const pdf=typeof body.pdf==='string'?body.pdf:'';
   if(pdf){if(pdf.length>11200000||!/^JVBERi0[A-Za-z0-9+/=\r\n]*$/.test(pdf))return reply({error:'PDF形式・サイズを確認してください。'},400);}else if(text.trim().length<40||text.length>80000)return reply({error:'40〜80,000文字の本文が必要です。'},400);
   const basis=String(body.basis||'送信された原稿').slice(0,120);const title=String(body.title||'研究論文').slice(0,300);
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([user.id,model,body.mode,title,basis,text,pdf])));const cacheKey=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');const now=Date.now();
   for(const [k,v] of cache)if(now-v.time>3600000)cache.delete(k);for(const [k,v] of limits)if(now-v.time>3600000)limits.delete(k);
-  const hit=cache.get(cacheKey);if(hit&&body.force!==true)return reply(hit.value);
+  const hit=cache.get(cacheKey);if(body.mode==='review'&&hit&&body.force!==true)return reply(hit.value);
   const usage=limits.get(user.id)||{time:now,count:0};if(usage.count>=20)return reply({error:'しばらく時間をおいてから解析してください。'},429);usage.count++;limits.set(user.id,usage);
+  let registration:Awaited<ReturnType<typeof claimPaper>>|undefined;
+  if(body.mode==='register'){if(typeof body.paperId!=='string'||body.paperId.length>100)return reply({error:'研究成果IDを確認してください。'},400);registration=await claimPaper(base,authHeaders,body.paperId);if(registration.result)return reply(registration.result);}
   const content:any[]=[];if(pdf)content.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:pdf}});
   content.push({type:'text',text:JSON.stringify({task:body.mode==='review'?'研究添削':'研究要約と継続研究提案',title,basis,untrusted_document:text||'添付PDF'})});
   const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model,max_tokens:4000,system,messages:[{role:'user',content}],tools:[{name:'submit_analysis',description:'研究の要約、提案、添削結果を構造化して返す',input_schema:schema}],tool_choice:{type:'tool',name:'submit_analysis'}}),signal:AbortSignal.timeout(55000)});
   if(!response.ok)return reply({error:response.status===429?'AIの利用上限に達しました。時間をおいて再試行してください。':response.status===401?'AI接続キーを確認してください。':response.status===400?'AIが原稿を読み取れません。PDFのページ数・暗号化やモデル設定を確認してください。':'AI提供元に接続できませんでした。'},502);
   const payload=await response.json();const result=payload.content?.find((c:any)=>c.type==='tool_use'&&c.name==='submit_analysis')?.input;
   if(payload.stop_reason==='max_tokens'||!validResult(result))return reply({error:'AIの回答が不完全です。再試行してください。'},502);
-  const value={...result,basis,generatedAt:new Date().toISOString()};if(cache.size>=30)cache.delete(cache.keys().next().value!);cache.set(cacheKey,{time:now,value});return reply(value);
+  const value={...result,basis,generatedAt:new Date().toISOString()};if(registration?.finish)await registration.finish(value);if(cache.size>=30)cache.delete(cache.keys().next().value!);cache.set(cacheKey,{time:now,value});return reply(value);
  }catch{return reply({error:'解析がタイムアウトしたか、通信に失敗しました。再試行してください。'},502);}
 });
