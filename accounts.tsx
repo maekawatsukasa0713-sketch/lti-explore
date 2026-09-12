@@ -1,3 +1,4 @@
+import {PasswordInput} from './PasswordInput';
 import React, {useEffect,useState} from 'react';
 import {supabase} from './client';
 import type {Profile} from './cloud';
@@ -10,9 +11,9 @@ async function accountAction(body:Record<string,unknown>){
 export function PasswordChange({onDone,onCancel}:{onDone:()=>void;onCancel?:()=>void}){
  const [current,setCurrent]=useState('');const [next,setNext]=useState('');const [again,setAgain]=useState('');const [error,setError]=useState('');const [busy,setBusy]=useState(false);
  return <div className="max-w-lg mx-auto bg-white p-8 rounded-2xl border space-y-4"><h2 className="text-xl font-bold">パスワードを変更してください</h2><p className="text-sm">初期・再発行パスワードでは研究データを開けません。自分だけが知っている12文字以上のパスワードに変更してください。</p><form className="space-y-4" onSubmit={async e=>{e.preventDefault();if(next!==again){setError('新しいパスワードが一致しません');return;}setBusy(true);setError('');try{const {data:{user}}=await supabase.auth.getUser();await accountAction({action:'change-password',currentPassword:current,newPassword:next});await supabase.auth.signOut({scope:'local'});if(user?.email){const signed=await supabase.auth.signInWithPassword({email:user.email,password:next});if(signed.error)throw signed.error;}setCurrent('');setNext('');setAgain('');onDone();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>
- <label className="block text-sm">現在のパスワード<input type="password" required autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)} className="block w-full border p-3 rounded-xl"/></label>
- <label className="block text-sm">新しいパスワード<input type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={next} onChange={e=>setNext(e.target.value)} className="block w-full border p-3 rounded-xl"/></label>
- <label className="block text-sm">もう一度入力<input type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={again} onChange={e=>setAgain(e.target.value)} className="block w-full border p-3 rounded-xl"/></label>
+ <label className="block text-sm">現在のパスワード<PasswordInput required autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)} className="block w-full border p-3 rounded-xl"/></label>
+ <label className="block text-sm">新しいパスワード<PasswordInput required minLength={12} maxLength={128} autoComplete="new-password" value={next} onChange={e=>setNext(e.target.value)} className="block w-full border p-3 rounded-xl"/></label>
+ <label className="block text-sm">もう一度入力<PasswordInput required minLength={12} maxLength={128} autoComplete="new-password" value={again} onChange={e=>setAgain(e.target.value)} className="block w-full border p-3 rounded-xl"/></label>
  <button disabled={busy} className="bg-emerald-700 text-white rounded-xl p-3">{busy?'変更中…':'変更して続ける'}</button></form>{error&&<p role="alert" className="text-sm text-red-700">{error}</p>}{onCancel&&<button disabled={busy} onClick={onCancel}>閉じる</button>}</div>;
 }
 export function MfaSetup({onDone,onCancel}:{onDone:()=>void;onCancel?:()=>void}){
