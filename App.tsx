@@ -1,3 +1,5 @@
+import {publishResearch} from './publish-research';
+import {featureMode,FeatureUnavailable} from './SchoolFeatures';
 import { ResearchLibrary } from './ResearchLibrary';
 import { ResearchDetail } from './ResearchDetail';
 import { ReviewPanels } from './ReviewPanels';
@@ -999,6 +1001,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [notices, setNotices] = useCloudList<NoticeItem[]>('lti_notices', DEFAULT_NOTICES);
 
   // 先生側：公開申請用フォームステート
+  const [publicationMessage,setPublicationMessage]=useState('');
+  const [publicationBusy,setPublicationBusy]=useState(false);
   const [teacherPaperTitle, setTeacherPaperTitle] = useState('');
   const [editingPaper,setEditingPaper]=useState<PublicPaper|null>(null);
   const [teacherPaperAuthor, setTeacherPaperAuthor] = useState('');
@@ -1250,8 +1254,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const pendingPapers = papers.filter(p => p.status === '承認待ち');
     const publishedPapers = papers.filter(p => p.status === '公開中');
 
-    const handleApprovePaper = (id: number) => {
-      setPapers(papers.map(p => p.id === id ? { ...p, status: '公開中', publishedDate: new Date().toISOString().split('T')[0].replace(/-/g, '/') } : p));
+    const handleApprovePaper = async (id:number) => {
+      if(publicationBusy)return;
+      if(!window.confirm('公開用ファイルと著者表記を確認しましたか？承認すると成果を公開します。AI解析は現在準備中です。'))return;
+      setPublicationBusy(true);setPublicationMessage('公開処理・AI解析中です…');
+      try{setPublicationMessage(await publishResearch(id));await cloud.reload();}catch(e){setPublicationMessage((e as Error).message||'公開処理に失敗しました。');}finally{setPublicationBusy(false);}
     };
 
     const handleUnpublishPaper = (id: number) => {
@@ -1383,6 +1390,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
           <main className="flex-1 p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto space-y-8">
               
+              {publicationMessage&&<p role="status" className="bg-indigo-50 border rounded-xl p-4 text-sm">{publicationMessage}</p>}
               {['ダッシュボード','データ分析','利用状況レポート'].includes(ltiCurrentTab) ? (<AdminAnalytics key={ltiCurrentTab} papers={papers} schools={cloud.schools} profiles={cloud.profiles} rows={cloud.rows} reload={cloud.reload} page={ltiCurrentTab}/>) : ltiCurrentTab === 'ホーム' ? (
                 <div className="space-y-8">
                   <div>
@@ -2571,7 +2579,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
     const handleTeacherSubmitPaper = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!teacherPaperTitle.trim() || !teacherPaperAuthor.trim()) return;
+      if (!teacherPaperTitle.trim()) return;
 
       let storagePath: string | undefined=editingPaper?.storagePath;
       try { if (teacherPaperFile) storagePath = await uploadPdf(teacherPaperFile); } catch (error) { setTeacherApplyMessage((error as Error).message); return; }
@@ -2586,11 +2594,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
         field: teacherPaperField,
         publishedDate: '',
         views: 0,
-        author: teacherPaperAuthor,
+        author: teacherPaperAuthor.trim()||'著者名非公開',
         status: '承認待ち',
         submittedDate: new Date().toISOString().split('T')[0].replace(/-/g, '/'),
         fileName: teacherPaperFile?.name,
-        abstract: teacherPaperAbstract.trim() || '（要旨未記入）'
+        abstract: teacherPaperAbstract.trim()
       };
 
       setPapers(editingPaper?papers.map(p=>p.id===editingPaper.id?{...p,...newPaper,id:p.id,storagePath:storagePath||p.storagePath,fileName:teacherPaperFile?.name||p.fileName}:p):[newPaper,...papers]);
@@ -2709,6 +2717,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       updateAiReviewItem(item.id, { sent: true });
     };
 
+    const tabMode=(tab:string)=>featureMode(cloud.schools.find(s=>s.id===schoolId)?.feature_settings,'teacher',tab);
     const teacherMenuBase = [
       { name: 'ホーム', icon: Home },
       { name: '学会・コンテスト', icon: Trophy },
@@ -2725,7 +2734,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const teacherMenuNames = reconcileMenuOrder(teacherMenuOrder, teacherMenuBase.map(m => m.name));
     const teacherMenu = teacherMenuNames
       .map(name => teacherMenuBase.find(m => m.name === name))
-      .filter((m): m is typeof teacherMenuBase[number] => !!m);
+      .filter((m): m is typeof teacherMenuBase[number] => !!m).filter(m=>tabMode(m.name)!=='hidden');
 
     return (
       <div className="min-h-screen bg-gray-50 flex font-sans text-gray-900">
@@ -2783,7 +2792,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   >
                     <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />
                     {Icon && <Icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-orange-500' : 'text-gray-400'}`} />}
-                    <span className="truncate">{item.name}</span>
+                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-[10px] ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>}
                   </button>
                 );
               })}
@@ -2820,7 +2829,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
           <main className="flex-1 p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto space-y-6">
 
-              {currentTab === 'ホーム' ? (
+              {tabMode(currentTab)!=='enabled'?<FeatureUnavailable mode={tabMode(currentTab)}/>:currentTab === 'ホーム' ? (
                 <div className="space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-2">
                     <h1 className="text-xl font-extrabold text-gray-900">先生用 ポータルホーム</h1>
@@ -2972,14 +2981,13 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-700">著者（生徒氏名）</label>
+                        <label className="text-xs font-bold text-gray-700">公開用の著者表記（任意・研究班名も可）</label>
                         <input
                           type="text"
                           value={teacherPaperAuthor}
                           onChange={(e) => setTeacherPaperAuthor(e.target.value)}
-                          placeholder="氏名"
+                          placeholder="空欄の場合は「著者名非公開」と表示"
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
-                          required
                         />
                       </div>
 
@@ -2999,7 +3007,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-gray-700">論文の要旨（200字程度）</label>
+                        <label className="text-xs font-bold text-gray-700">著者による要旨（任意・200字程度）</label>
                         <span className={`text-[10px] font-mono font-bold ${teacherPaperAbstract.length > 200 ? 'text-rose-600' : 'text-gray-400'}`}>
                           {teacherPaperAbstract.length} / 200字
                         </span>
@@ -3011,7 +3019,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         rows={4}
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 resize-none"
                       ></textarea>
-                      <p className="text-[10px] text-gray-400">この要旨は、LTI運営の審査画面や「みんなの論文」の一覧・詳細に表示されます。</p>
+                      <p className="text-[10px] text-gray-400">記入した場合は著者の要旨として表示します。AI要約とは別に扱います。ファイル内の氏名も確認した公開用ファイルを提出してください。AI要約・継続提案は公開承認時に一度だけ生成する予定です（現在準備中）。</p>
                     </div>
 
                     <div className="space-y-2 pt-2">
@@ -3695,6 +3703,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       }
     };
 
+    const tabMode=(tab:string)=>featureMode(cloud.schools.find(s=>s.id===schoolId)?.feature_settings,'student',tab);
     const studentMenuBase = [
       { name: 'ホーム', icon: Home },
       { name: '課題・提出物', icon: FileText },
@@ -3708,7 +3717,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const studentMenuNames = reconcileMenuOrder(studentMenuOrder, studentMenuBase.map(m => m.name));
     const studentMenu = studentMenuNames
       .map(name => studentMenuBase.find(m => m.name === name))
-      .filter((m): m is typeof studentMenuBase[number] => !!m);
+      .filter((m): m is typeof studentMenuBase[number] => !!m).filter(m=>tabMode(m.name)!=='hidden');
 
     return (
       <div className="min-h-screen bg-gray-50 flex font-sans text-gray-900">
@@ -3773,7 +3782,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   >
                     <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />
                     {Icon && <Icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`} />}
-                    <span className="truncate">{item.name}</span>
+                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-[10px] ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>}
                   </button>
                 );
               })}
@@ -3810,7 +3819,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
           <main className="flex-1 p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto space-y-6">
 
-              {currentTab === 'ホーム' ? (
+              {tabMode(currentTab)!=='enabled'?<FeatureUnavailable mode={tabMode(currentTab)}/>:currentTab === 'ホーム' ? (
                 <div className="space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-2">
                     <h1 className="text-xl font-extrabold text-gray-900">マイポータル</h1>
