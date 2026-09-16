@@ -1,5 +1,5 @@
 import { runSearch } from './search.ts';
-const cors={'Access-Control-Allow-Origin':'https://maekawatsukasa0713-sketch.github.io','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin'};
+const cors={'Access-Control-Allow-Origin':'https://lti-explore.vercel.app','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin'};
 const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
 const cache=new Map<string,{time:number;data:Awaited<ReturnType<typeof runSearch>>}>();
 Deno.serve(async(req:Request)=>{

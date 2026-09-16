@@ -1,4 +1,4 @@
-name: Deploy LTI to GitHub Pages
+name: Deploy LTI redirect to GitHub Pages
 on:
   push:
     branches: [main]
@@ -21,9 +21,10 @@ jobs:
       - run: node tests/paper-search.test.mjs
       - run: node tests/research-ai.test.mjs
       - run: npm run build
+      # The app is served from Vercel; this origin only keeps a redirect that clears old sign-in data.
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: pages-redirect
   deploy:
     needs: build
     runs-on: ubuntu-latest

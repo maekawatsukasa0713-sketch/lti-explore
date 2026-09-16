@@ -1,0 +1,8 @@
+.env*
+.git
+node_modules
+dist
+tests
+scripts
+supabase/migrations
+pages-redirect

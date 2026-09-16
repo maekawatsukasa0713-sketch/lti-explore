@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>LTI Explore の移転</title>
+<script>
+// Sign-in data must not stay on this shared github.io origin; the app now runs on its own origin.
+try{for(const key of Object.keys(localStorage))if(/^(sb-|lti-|lti_)/.test(key))localStorage.removeItem(key);}catch(e){}
+location.replace('https://lti-explore.vercel.app/'+location.hash);
+</script>
+</head>
+<body>
+<p>LTI Explore は <a href="https://lti-explore.vercel.app/">https://lti-explore.vercel.app/</a> に移転しました。</p>
+</body>
+</html>

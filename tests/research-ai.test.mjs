@@ -6,7 +6,7 @@ try{
  globalThis.Deno={env:{get:k=>k==='SUPABASE_URL'?'https://test.example':k==='SUPABASE_ANON_KEY'?'test-key':k==='ANTHROPIC_API_KEY'?(configured?'test-ai-key':undefined):undefined},serve:fn=>handler=fn};
  const {validResult}=await import(path.join(dir,'ai.mjs'));
  const result={title:'試験用の研究',summary:['入力内容の要約'],suggestions:[{title:'追加の分析',description:'データの比較',tags:['分析']}],corrections:['方法を明記'],advice:['図の説明を追加'],nextExperiments:['既存データの比較']};
- globalThis.fetch=async url=>{if(String(url).includes('/rpc/lti_feature_enabled'))return Response.json(true);if(String(url).includes('/auth/v1/user'))return Response.json({id:'test-user'});if(String(url).includes('/rest/v1/lti_profiles'))return Response.json([{role,active}]);modelCalls++;return Response.json({stop_reason:'tool_use',content:[{type:'tool_use',name:'submit_analysis',input:result}]});};
+ globalThis.fetch=async url=>{if(String(url).includes('/rpc/lti_feature_enabled')||String(url).includes('/rpc/lti_consume_ai_quota'))return Response.json(true);if(String(url).includes('/auth/v1/user'))return Response.json({id:'test-user'});if(String(url).includes('/rest/v1/lti_profiles'))return Response.json([{role,active}]);modelCalls++;return Response.json({stop_reason:'tool_use',content:[{type:'tool_use',name:'submit_analysis',input:result}]});};
  const request=body=>new Request('https://function.example',{method:'POST',headers:{authorization:'Bearer test-user-token','content-type':'application/json'},body:JSON.stringify(body)});
  assert.equal((await handler(new Request('https://function.example',{method:'POST'}))).status,401);
  assert.deepEqual(await (await handler(request({mode:'status'}))).json(),{configured:false});
