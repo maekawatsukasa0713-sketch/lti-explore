@@ -1,5 +1,5 @@
 import {supabase} from './client';
-export type ResearchAnalysis={title:string;summary:string[];suggestions:{title:string;description:string;tags:string[]}[];corrections:string[];advice:string[];nextExperiments:string[];generatedAt:string;basis:string};
+export type ResearchAnalysis={classification?:{field:string;reason:string};title:string;summary:string[];suggestions:{title:string;description:string;tags:string[]}[];corrections:string[];advice:string[];nextExperiments:string[];generatedAt:string;basis:string};
 export async function invokeResearchAI(body:Record<string,unknown>,signal?:AbortSignal):Promise<ResearchAnalysis>{
  const {data,error}=await supabase.functions.invoke('research-ai',{body,signal});
  if(error){let message='AI解析に接続できませんでした。時間をおいて再試行してください。';try{const result=await error.context?.json();message=result?.error||message;}catch{}throw new Error(message);}

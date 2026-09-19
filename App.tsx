@@ -1,3 +1,4 @@
+import {BulkImport} from './BulkImport';
 import {InsightApproval} from './InsightApproval';
 import {featureMode,FeatureUnavailable} from './SchoolFeatures';
 import { ResearchLibrary } from './ResearchLibrary';
@@ -1277,7 +1278,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       { 
         name: '論文管理', 
         icon: BookOpen, 
-        children: ['公開申請一覧', '公開済み論文一覧', '特集・ピックアップ管理'] 
+        children: ['論文の一括登録・公開', '公開申請一覧', '公開済み論文一覧', '特集・ピックアップ管理'] 
       },
 
       { 
@@ -1387,7 +1388,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
               
               {insightPaper!==null&&<InsightApproval id={insightPaper} onClose={()=>setInsightPaper(null)} onSaved={async(message)=>{setPublicationMessage(message);await cloud.reload();}}/>}
               {publicationMessage&&<p role="status" className="bg-indigo-50 border rounded-xl p-4 text-sm">{publicationMessage}</p>}
-              {['ダッシュボード','データ分析','利用状況レポート'].includes(ltiCurrentTab) ? (<AdminAnalytics key={ltiCurrentTab} papers={papers} schools={cloud.schools} profiles={cloud.profiles} rows={cloud.rows} reload={cloud.reload} page={ltiCurrentTab}/>) : ltiCurrentTab === 'ホーム' ? (
+              {ltiCurrentTab==='論文の一括登録・公開'?<BulkImport/>:['ダッシュボード','データ分析','利用状況レポート'].includes(ltiCurrentTab) ? (<AdminAnalytics key={ltiCurrentTab} papers={papers} schools={cloud.schools} profiles={cloud.profiles} rows={cloud.rows} reload={cloud.reload} page={ltiCurrentTab}/>) : ltiCurrentTab === 'ホーム' ? (
                 <div className="space-y-8">
                   <div>
                     <h1 className="text-2xl font-extrabold text-gray-900">LTI管理ダッシュボードへようこそ</h1>
