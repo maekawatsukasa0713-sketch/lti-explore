@@ -39,14 +39,7 @@ export async function saveMyProfile(name:string,password:string) {
  if(password)throw new Error('パスワード変更は画面右下の「パスワード変更」から行ってください。');
  const {error}=await supabase.from('lti_profiles').update({name:name.trim()}).eq('id',user.id);if(error)throw error;
 }
-export async function uploadPdf(file:File):Promise<string> {
- const ext=file.name.split('.').pop()?.toLowerCase();
- const types:Record<string,string>={pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'};
- if(!ext||!types[ext]||file.size>10*1024*1024)throw new Error('PDF・Word（.docx、10MB以内）を選んでください');
- const {data:{user}}=await supabase.auth.getUser();if(!user)throw new Error('ログインしてください');
- const path=`${user.id}/${crypto.randomUUID()}.${ext}`;
- const {error}=await supabase.storage.from('lti-documents').upload(path,file,{contentType:types[ext],upsert:false});if(error)throw error;return path;
-}
+export {uploadDocument as uploadPdf} from './document-upload';
 export function PdfView({path}:{path?:string}) {
  const [url,setUrl]=useState('');const [text,setText]=useState('');const [error,setError]=useState('');const [full,setFull]=useState(false);
  useEffect(()=>{let alive=true;let objectUrl='';setUrl('');setText('');setError('');if(path)(async()=>{try{const {data,error}=await supabase.storage.from('lti-documents').download(path);if(error)throw error;objectUrl=URL.createObjectURL(data);if(path.endsWith('.docx')){const mammoth=await import('mammoth');const result=await mammoth.extractRawText({arrayBuffer:await data.arrayBuffer()});if(alive)setText(result.value);}if(alive)setUrl(objectUrl);else URL.revokeObjectURL(objectUrl);}catch{if(alive)setError('添付を取得できませんでした。通信と閲覧権限を確認してください。');}})();return()=>{alive=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};},[path]);
@@ -74,7 +67,8 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
    const {data:p,error:pe}=await supabase.from('lti_profiles').select('*').eq('id',userId).single();if(pe)throw pe;
    if(token!==generation.current)return;setProfile(p);
    if(!p.active){setRows([]);ref.current=[];setProfiles([]);setSchools([]);return;}
-   const [pr,sc]=await Promise.all([supabase.from('lti_profiles').select('*'),supabase.from('lti_schools').select('*')]);if(pr.error)throw pr.error;if(sc.error)throw sc.error;
+   const listAll=async(table:string)=>{const data:any[]=[];for(let offset=0;;offset+=500){const r=await supabase.from(table).select('*').order('id').range(offset,offset+499);if(r.error)throw r.error;data.push(...r.data);if(r.data.length<500)return {data};}};
+   const [pr,sc]=await Promise.all([listAll('lti_profiles'),listAll('lti_schools')]);
    const all:Row[]=[];for(let offset=0;;offset+=500){const r=await supabase.from('lti_records').select('*').order('kind').order('id').range(offset,offset+499);if(r.error)throw r.error;all.push(...r.data);if(r.data.length<500)break;}
    if(token!==generation.current)return;setProfiles(pr.data.filter(p=>!p.deleted_at));setSchools(sc.data.filter(s=>!s.deleted_at));setRows(all);ref.current=all;setDataReady(true);setError('');
   }catch(e){if(token===generation.current)setError(e instanceof Error?e.message:'データを取得できませんでした');}finally{if(token===generation.current)setLoading(false);}

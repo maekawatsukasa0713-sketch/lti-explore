@@ -1,3 +1,4 @@
+import {AccountManagement} from './accounts';
 import {BulkImport} from './BulkImport';
 import {InsightApproval} from './InsightApproval';
 import {featureMode,FeatureUnavailable} from './SchoolFeatures';
@@ -270,7 +271,7 @@ const PaperPreviewModal = ({
             </p>
             <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
               {(!previewPaper.messages || previewPaper.messages.length === 0) ? (
-                <p className="text-[11px] text-gray-400 italic">まだメッセージのやり取りはありません。</p>
+                <p className="text-xs text-gray-400 italic">まだメッセージのやり取りはありません。</p>
               ) : (
                 previewPaper.messages.map(m => (
                   <div key={m.id} className={`p-3 rounded-xl text-xs ${m.sender === 'lti' ? 'bg-indigo-50 border border-indigo-100' : 'bg-orange-50 border border-orange-100'}`}>
@@ -278,7 +279,7 @@ const PaperPreviewModal = ({
                       <span className={`font-bold ${m.sender === 'lti' ? 'text-indigo-700' : 'text-orange-700'}`}>
                         {m.sender === 'lti' ? '🏢 ' : '🧑‍🏫 '}{m.senderName}
                       </span>
-                      <span className="text-[10px] text-gray-400 font-mono">{m.createdAt}</span>
+                      <span className="text-xs text-gray-400 font-mono">{m.createdAt}</span>
                     </div>
                     <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{m.text}</p>
                   </div>
@@ -370,7 +371,7 @@ const PaperDetailSplitView = ({
                     {detailPaper.abstract || '（概要が設定されていません）'}
                   </p>
                 </div>
-                <p className="text-[10px] text-gray-400 pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-400 pt-4 border-t border-gray-100">
                   添付原稿は上部に自動表示されます。
                 </p>
               </div>
@@ -384,7 +385,7 @@ const PaperDetailSplitView = ({
             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
               <Bot className="w-4 h-4 text-emerald-600" /> AIからの継続研究のおすすめ
             </h3>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">AI提案</span>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">AI提案</span>
           </div>
           <p className="text-xs text-gray-500 leading-relaxed">
             この論文の内容をもとに、継続研究を進めるための手法や切り口を提案します。興味のあるテーマを参考に、次の研究計画を立ててみましょう。
@@ -402,7 +403,7 @@ const PaperDetailSplitView = ({
               <p>{aiError}</p>
               <button
                 onClick={onRetry}
-                className="px-3 py-1.5 bg-white border border-amber-200 hover:bg-amber-100 text-amber-800 font-bold text-[11px] rounded-lg"
+                className="px-3 py-1.5 bg-white border border-amber-200 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-lg"
               >
                 再試行する
               </button>
@@ -418,17 +419,17 @@ const PaperDetailSplitView = ({
               {aiSuggestions.map((s, i) => (
                 <div key={i} className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
                   <p className="text-xs font-bold text-gray-900 flex items-start gap-2">
-                    <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                       {i + 1}
                     </span>
                     {s.title}
                   </p>
-                  <p className="text-[11px] text-gray-600 leading-relaxed">{s.description}</p>
+                  <p className="text-xs text-gray-600 leading-relaxed">{s.description}</p>
                   {s.tags && s.tags.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      <span className="text-[10px] font-bold text-gray-400">アプローチ例</span>
+                      <span className="text-xs font-bold text-gray-400">アプローチ例</span>
                       {s.tags.map((t, ti) => (
-                        <span key={ti} className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                        <span key={ti} className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
                           {t}
                         </span>
                       ))}
@@ -471,7 +472,7 @@ const RejectPaperModal = ({
             rows={4}
             className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 resize-none"
           ></textarea>
-          <p className="text-[10px] text-gray-400">入力すると、担当教員の画面にメッセージとして届きます。</p>
+          <p className="text-xs text-gray-400">入力すると、担当教員の画面にメッセージとして届きます。</p>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button
@@ -1289,15 +1290,15 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       { 
         name: 'システム', 
         icon: Settings, 
-        children: ['運営者管理', '設定', '権限管理', 'ヘルプ'] 
+        children: ['学校・利用者管理', '運営者管理', '設定', '権限管理', 'ヘルプ'] 
       },
     ];
 
     return (
-      <div className="min-h-screen bg-gray-50 flex font-sans text-gray-900">
+      <div className="lti-shell min-h-screen bg-gray-50 flex font-sans text-gray-900">
         <PaperPreviewModal previewPaper={previewPaper} setPreviewPaper={setPreviewPaper} step={step} schoolId={schoolId} paperReplyDraft={paperReplyDraft} setPaperReplyDraft={setPaperReplyDraft} handleSendPaperMessage={handleSendPaperMessage} />
         <RejectPaperModal rejectTargetPaper={rejectTargetPaper} setRejectTargetPaper={setRejectTargetPaper} rejectMessageDraft={rejectMessageDraft} setRejectMessageDraft={setRejectMessageDraft} handleConfirmRejectPaper={handleConfirmRejectPaper} />
-        <aside className="w-64 bg-white shadow-sm flex flex-col border-r border-gray-200">
+        <aside className="lti-sidebar w-64 shrink-0 bg-white shadow-sm flex flex-col border-r border-gray-200">
           <div className="h-16 flex items-center px-6 border-b border-gray-200 justify-between">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">L</div>
@@ -1383,12 +1384,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
             </div>
           </header>
 
-          <main className="flex-1 p-8 overflow-y-auto">
+          <main className="flex-1 min-w-0 p-4 md:p-6 xl:p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto space-y-8">
               
               {insightPaper!==null&&<InsightApproval id={insightPaper} onClose={()=>setInsightPaper(null)} onSaved={async(message)=>{setPublicationMessage(message);await cloud.reload();}}/>}
               {publicationMessage&&<p role="status" className="bg-indigo-50 border rounded-xl p-4 text-sm">{publicationMessage}</p>}
-              {ltiCurrentTab==='論文の一括登録・公開'?<BulkImport/>:['ダッシュボード','データ分析','利用状況レポート'].includes(ltiCurrentTab) ? (<AdminAnalytics key={ltiCurrentTab} papers={papers} schools={cloud.schools} profiles={cloud.profiles} rows={cloud.rows} reload={cloud.reload} page={ltiCurrentTab}/>) : ltiCurrentTab === 'ホーム' ? (
+              {ltiCurrentTab==='学校・利用者管理'?<section className="bg-white border rounded-2xl p-6 space-y-4"><h1 className="text-2xl font-bold">学校・利用者管理</h1><p>学校の登録・IDの一括発行・利用機能の設定はこちらから開けます。</p><AccountManagement profiles={cloud.profiles} schools={cloud.schools} profile={profile} reload={cloud.reload}/></section>:ltiCurrentTab==='論文の一括登録・公開'?<BulkImport/>:['ダッシュボード','データ分析','利用状況レポート'].includes(ltiCurrentTab) ? (<AdminAnalytics key={ltiCurrentTab} papers={papers} schools={cloud.schools} profiles={cloud.profiles} rows={cloud.rows} reload={cloud.reload} page={ltiCurrentTab}/>) : ltiCurrentTab === 'ホーム' ? (
                 <div className="space-y-8">
                   <div>
                     <h1 className="text-2xl font-extrabold text-gray-900">LTI管理ダッシュボードへようこそ</h1>
@@ -1399,27 +1400,27 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                       <p className="text-xs font-bold text-gray-400">発行学校ID数 (実数)</p>
                       <p className="text-2xl font-extrabold text-gray-900">{registeredSchoolIds.length} <span className="text-xs font-medium text-gray-500">校</span></p>
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">システムと完全リンク</span>
+                      <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">システムと完全リンク</span>
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                       <p className="text-xs font-bold text-gray-400">登録生徒数 (全校合計)</p>
                       <p className="text-2xl font-extrabold text-gray-900">{studentsList.length} <span className="text-xs font-medium text-gray-500">名</span></p>
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">280名/校 × 4校</span>
+                      <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">280名/校 × 4校</span>
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                       <p className="text-xs font-bold text-gray-400">公開論文数</p>
                       <p className="text-2xl font-extrabold text-indigo-600">{publishedPapers.length} <span className="text-xs font-medium text-gray-500">本</span></p>
-                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">承認待ち {pendingPapers.length}件</span>
+                      <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">承認待ち {pendingPapers.length}件</span>
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                       <p className="text-xs font-bold text-gray-400">配信中の学会・コンテスト</p>
                       <p className="text-2xl font-extrabold text-gray-900">{contests.length} <span className="text-xs font-medium text-gray-500">件</span></p>
-                      <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">募集中</span>
+                      <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">募集中</span>
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                       <p className="text-xs font-bold text-gray-400">運営アカウント数</p>
                       <p className="text-2xl font-extrabold text-gray-900">{ltiAdminUsers.length} <span className="text-xs font-medium text-gray-500">名</span></p>
-                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">アクティブ</span>
+                      <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">アクティブ</span>
                     </div>
                   </div>
 
@@ -1498,7 +1499,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         {editingContestId !== null ? '学会・コンテストの編集（再公開）' : '新規学会・コンテストの投稿'}
                       </h3>
                       {editingContestId !== null && (
-                        <button type="button" onClick={resetContestForm} className="text-[11px] font-bold text-gray-400 hover:text-gray-600">
+                        <button type="button" onClick={resetContestForm} className="text-xs font-bold text-gray-400 hover:text-gray-600">
                           編集をやめて新規作成に戻る
                         </button>
                       )}
@@ -1550,7 +1551,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           onChange={(e) => setNewContestDeadlineDate(e.target.value)}
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
                         />
-                        <p className="text-[10px] text-gray-400">設定すると、この日付を過ぎた案内は自動で「期限切れ」と表示されます。</p>
+                        <p className="text-xs text-gray-400">設定すると、この日付を過ぎた案内は自動で「期限切れ」と表示されます。</p>
                       </div>
                     </div>
 
@@ -1597,7 +1598,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       {/* 特定校チェックボックス一覧 */}
                       {newContestTargetType === 'specific' && (
                         <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200/80 space-y-2 mt-2">
-                          <p className="text-[11px] font-bold text-amber-900">配信対象の学校IDを選択してください：</p>
+                          <p className="text-xs font-bold text-amber-900">配信対象の学校IDを選択してください：</p>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                             {registeredSchoolIds.map(sId => (
                               <label key={sId} className="flex items-center gap-2 text-xs font-mono font-medium text-gray-800 cursor-pointer bg-white p-2 rounded-lg border border-amber-200">
@@ -1640,19 +1641,19 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <div key={c.id} className={`bg-white p-5 rounded-2xl border shadow-sm flex items-start justify-between gap-4 ${expired ? 'border-gray-200 opacity-70' : 'border-gray-200'}`}>
                           <div className="space-y-2 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">{c.category}</span>
+                              <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">{c.category}</span>
                               <span className="text-xs font-mono text-gray-400">{c.date}</span>
                               {c.targetType === 'all' ? (
-                                <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
                                   <Globe className="w-3 h-3" /> 一斉公開
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <span className="text-xs font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full flex items-center gap-1">
                                   <LockKeyhole className="w-3 h-3" /> 限定公開 ({c.targetSchoolIds?.join(', ')})
                                 </span>
                               )}
                               {expired && (
-                                <span className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full flex items-center gap-1">
                                   <Clock className="w-3 h-3" /> 期限切れ
                                 </span>
                               )}
@@ -1731,16 +1732,16 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               <tr key={paper.id} className="hover:bg-gray-50">
                                 <td className="py-3.5 px-6">
                                   <p className="font-bold text-gray-900">{paper.title}{paper.withdrawalRequested&&<span className="ml-2 text-red-700">差し止め申請あり</span>}</p>
-                                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{paper.field}</span>
+                                  <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{paper.field}</span>
                                 </td>
                                 <td className="py-3.5 px-6 text-gray-700 font-medium">
                                   {paper.submittedByTeacherName} 先生
-                                  <p className="text-[10px] font-mono text-gray-400">ID: {paper.submittedByTeacherId}</p>
+                                  <p className="text-xs font-mono text-gray-400">ID: {paper.submittedByTeacherId}</p>
                                 </td>
                                 <td className="py-3.5 px-6 text-gray-600">{paper.author}</td>
                                 <td className="py-3.5 px-6 font-mono text-gray-500">{paper.submittedDate}</td>
                                 <td className="py-3.5 px-6">
-                                  <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
+                                  <span className={`px-2.5 py-0.5 rounded-full font-bold text-xs ${
                                     paper.status === '承認待ち' ? 'bg-amber-100 text-amber-800' :
                                     paper.status === '公開停止' ? 'bg-gray-100 text-gray-700' : 'bg-rose-100 text-rose-800'
                                   }`}>
@@ -1775,7 +1776,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                     <button onClick={() => handleApprovePaper(paper.id)} className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm">承認</button>
                                   )}
                                   {paper.messages && paper.messages.length > 0 && (
-                                    <span className="inline-block px-2 py-1 bg-sky-50 text-sky-700 font-bold rounded-lg text-[10px]">💬 {paper.messages.length}</span>
+                                    <span className="inline-block px-2 py-1 bg-sky-50 text-sky-700 font-bold rounded-lg text-xs">💬 {paper.messages.length}</span>
                                   )}
                                 </td>
                               </tr>
@@ -1835,9 +1836,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               <tr key={paper.id} className="hover:bg-gray-50">
                                 <td className="py-3.5 px-6">
                                   <p className="font-bold text-gray-900">{paper.title}{paper.withdrawalRequested&&<span className="ml-2 text-red-700">差し止め申請あり</span>}</p>
-                                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{paper.field}</span>
+                                  <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{paper.field}</span>
                                   {paper.isPickedUp && (
-                                    <span className="ml-1.5 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">★ ピックアップ中</span>
+                                    <span className="ml-1.5 text-xs font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">★ ピックアップ中</span>
                                   )}
                                 </td>
                                 <td className="py-3.5 px-6 text-gray-600">{paper.author}</td>
@@ -1894,8 +1895,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         {targetPapers.map((paper) => (
                           <div key={paper.id} className={`bg-white p-5 rounded-2xl border shadow-sm space-y-3 ${paper.isPickedUp ? 'border-amber-300 ring-2 ring-amber-100' : 'border-gray-200'}`}>
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{paper.field}</span>
-                              {paper.isPickedUp && <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">★ ピックアップ中</span>}
+                              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{paper.field}</span>
+                              {paper.isPickedUp && <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">★ ピックアップ中</span>}
                             </div>
                             <h4 className="font-bold text-gray-900 text-sm leading-snug">{paper.title}{paper.withdrawalRequested&&<span className="ml-2 text-red-700">差し止め申請あり</span>}</h4>
                             <p className="text-xs text-gray-500">著者: {paper.author}</p>
@@ -1950,7 +1951,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                           <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
                             <span className="text-xs font-bold text-gray-700">先生一覧</span>
-                            <span className="text-[10px] font-bold bg-orange-50 text-orange-700 px-2.5 py-1 rounded-lg">全{schoolTeachersView.length}名</span>
+                            <span className="text-xs font-bold bg-orange-50 text-orange-700 px-2.5 py-1 rounded-lg">全{schoolTeachersView.length}名</span>
                           </div>
                           <div className="max-h-[500px] overflow-y-auto">
                             <table className="w-full text-left border-collapse text-xs">
@@ -1977,7 +1978,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                           <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
                             <span className="text-xs font-bold text-gray-700">生徒一覧</span>
-                            <span className="text-[10px] font-bold bg-orange-50 text-orange-700 px-2.5 py-1 rounded-lg">全{schoolStudentsView.length}名</span>
+                            <span className="text-xs font-bold bg-orange-50 text-orange-700 px-2.5 py-1 rounded-lg">全{schoolStudentsView.length}名</span>
                           </div>
                           <div className="max-h-[500px] overflow-y-auto">
                             <table className="w-full text-left border-collapse text-xs">
@@ -2034,7 +2035,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             className={`p-3 rounded-xl border text-left transition-all ${user.id === currentLtiAdminId ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/20' : 'border-gray-200 hover:bg-gray-50'}`}
                           >
                             <p className="font-bold text-xs text-gray-900">{user.name}</p>
-                            <p className="text-[10px] text-gray-400 font-mono">{user.email}</p>
+                            <p className="text-xs text-gray-400 font-mono">{user.email}</p>
                           </button>
                         ))}
                       </div>
@@ -2141,7 +2142,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     <div className="space-y-2 pt-2 border-t border-gray-100">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold text-gray-700">スライド（画像）</label>
-                        <span className="text-[10px] text-gray-400 font-mono">{draftSlides.length} 枚</span>
+                        <span className="text-xs text-gray-400 font-mono">{draftSlides.length} 枚</span>
                       </div>
 
                       <div className="border-2 border-dashed border-gray-300 hover:border-indigo-400 rounded-xl p-5 text-center bg-gray-50 transition-colors relative cursor-pointer">
@@ -2157,7 +2158,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <div className="space-y-1 pointer-events-none">
                           <Upload className="w-6 h-6 text-indigo-500 mx-auto" />
                           <p className="text-xs font-bold text-gray-700">クリックまたはドラッグ＆ドロップで画像を1枚追加</p>
-                          <p className="text-[10px] text-gray-400">追加した順にスライドとして並びます。複数回選択して枚数を増やせます。</p>
+                          <p className="text-xs text-gray-400">追加した順にスライドとして並びます。複数回選択して枚数を増やせます。</p>
                         </div>
                       </div>
 
@@ -2167,7 +2168,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             <div key={slide.id} className="flex items-start gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
                               <img src={slide.imageUrl} alt={`スライド${idx + 1}`} className="w-20 h-14 object-cover rounded-lg border border-gray-200 shrink-0" />
                               <div className="flex-1 space-y-1.5 min-w-0">
-                                <p className="text-[10px] font-bold text-gray-400">スライド {idx + 1}</p>
+                                <p className="text-xs font-bold text-gray-400">スライド {idx + 1}</p>
                                 <input
                                   type="text"
                                   value={slide.caption}
@@ -2215,10 +2216,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 <img src={mat.slides[0].imageUrl} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-200 shrink-0" />
                               )}
                               <div className="space-y-1 min-w-0">
-                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-mono">{mat.schoolId}</span>
+                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-mono">{mat.schoolId}</span>
                                 <h4 className="font-bold text-gray-900 text-sm">{mat.title}</h4>
                                 <p className="text-xs text-gray-500">{mat.description}</p>
-                                <p className="text-[11px] text-gray-400 font-mono flex items-center gap-1">
+                                <p className="text-xs text-gray-400 font-mono flex items-center gap-1">
                                   <BookOpen className="w-3.5 h-3.5 text-indigo-400" /> {mat.slides?.length || 0} 枚のスライド ・ {mat.uploadedAt}
                                 </p>
                               </div>
@@ -2255,7 +2256,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         {editingNoticeId !== null ? 'お知らせの編集' : '新規お知らせの作成'}
                       </h3>
                       {editingNoticeId !== null && (
-                        <button type="button" onClick={resetNoticeForm} className="text-[11px] font-bold text-gray-400 hover:text-gray-600">
+                        <button type="button" onClick={resetNoticeForm} className="text-xs font-bold text-gray-400 hover:text-gray-600">
                           編集をやめて新規作成に戻る
                         </button>
                       )}
@@ -2301,7 +2302,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         {notices.map(n => (
                           <div key={n.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-start justify-between gap-4">
                             <div className="space-y-1 flex-1">
-                              <span className="text-[10px] font-mono text-gray-400">{n.date}</span>
+                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
                               <h4 className="font-bold text-gray-900 text-sm">{n.title}</h4>
                               <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
                             </div>
@@ -2734,11 +2735,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       .filter((m): m is typeof teacherMenuBase[number] => !!m).filter(m=>tabMode(m.name)!=='hidden');
 
     return (
-      <div className="min-h-screen bg-gray-50 flex font-sans text-gray-900">
+      <div className="lti-shell min-h-screen bg-gray-50 flex font-sans text-gray-900">
         <PaperPreviewModal previewPaper={previewPaper} setPreviewPaper={setPreviewPaper} step={step} schoolId={schoolId} paperReplyDraft={paperReplyDraft} setPaperReplyDraft={setPaperReplyDraft} handleSendPaperMessage={handleSendPaperMessage} />
         <PdfPreviewModal previewPdfModalData={previewPdfModalData} setPreviewPdfModalData={setPreviewPdfModalData} />
         <MaterialPreviewModal previewMaterialModalData={previewMaterialModalData} setPreviewMaterialModalData={setPreviewMaterialModalData} />
-        <aside className="w-64 bg-white shadow-sm flex flex-col border-r border-gray-200">
+        <aside className="lti-sidebar w-64 shrink-0 bg-white shadow-sm flex flex-col border-r border-gray-200">
           <div className="h-16 flex items-center px-6 border-b border-gray-200 justify-between">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-orange-400 rounded-lg flex items-center justify-center text-white font-bold text-sm">L</div>
@@ -2789,7 +2790,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   >
                     <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />
                     {Icon && <Icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-orange-500' : 'text-gray-400'}`} />}
-                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-[10px] ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>}
+                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-xs ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>}
                   </button>
                 );
               })}
@@ -2823,7 +2824,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
             </div>
           </header>
 
-          <main className="flex-1 p-8 overflow-y-auto">
+          <main className="flex-1 min-w-0 p-4 md:p-6 xl:p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto space-y-6">
 
               {tabMode(currentTab)!=='enabled'?<FeatureUnavailable mode={tabMode(currentTab)}/>:currentTab === 'ホーム' ? (
@@ -2858,7 +2859,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           <div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="flex items-center justify-between mb-1">
                               <h4 className="font-bold text-gray-900 text-xs">{n.title}</h4>
-                              <span className="text-[10px] font-mono text-gray-400">{n.date}</span>
+                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
                             </div>
                             <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
                           </div>
@@ -2892,7 +2893,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-orange-50 text-orange-700">{c.category}</span>
                             <div className="flex items-center gap-2">
                               {isContestExpired(c) && (
-                                <span className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">期限切れ</span>
+                                <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">期限切れ</span>
                               )}
                               <span className="text-xs text-gray-400 font-mono">{c.date}</span>
                             </div>
@@ -2930,7 +2931,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           <div className="p-6 space-y-3">
                             <h3 className="font-bold text-base text-gray-900 leading-snug">{mat.title}</h3>
                             <p className="text-xs text-gray-500">{mat.description}</p>
-                            <p className="text-[11px] text-gray-400 font-mono flex items-center gap-1">
+                            <p className="text-xs text-gray-400 font-mono flex items-center gap-1">
                               <BookOpen className="w-3.5 h-3.5 text-indigo-400" /> {mat.slides?.length || 0} 枚のスライド ・ {mat.uploadedAt}
                             </p>
                             <div className="pt-2 flex justify-end">
@@ -3005,7 +3006,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold text-gray-700">著者による要旨（任意・200字程度）</label>
-                        <span className={`text-[10px] font-mono font-bold ${teacherPaperAbstract.length > 200 ? 'text-rose-600' : 'text-gray-400'}`}>
+                        <span className={`text-xs font-mono font-bold ${teacherPaperAbstract.length > 200 ? 'text-rose-600' : 'text-gray-400'}`}>
                           {teacherPaperAbstract.length} / 200字
                         </span>
                       </div>
@@ -3016,7 +3017,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         rows={4}
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 resize-none"
                       ></textarea>
-                      <p className="text-[10px] text-gray-400">記入した場合は著者の要旨として表示します。AI要約とは別に扱います。ファイル内の氏名も確認した公開用ファイルを提出してください。AI要約・継続提案は公開前に一度だけ生成し、LTIが確認・編集してから公開します。</p>
+                      <p className="text-xs text-gray-400">記入した場合は著者の要旨として表示します。AI要約とは別に扱います。ファイル内の氏名も確認した公開用ファイルを提出してください。AI要約・継続提案は公開前に一度だけ生成し、LTIが確認・編集してから公開します。</p>
                     </div>
 
                     <div className="space-y-2 pt-2">
@@ -3035,7 +3036,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <div className="space-y-1 pointer-events-none">
                           <Upload className="w-8 h-8 text-orange-500 mx-auto" />
                           <p className="text-xs font-bold text-gray-700">クリックしてPDF・Wordを選択</p>
-                          <p className="text-[10px] text-gray-400">※最大ファイルサイズ: 10MB</p>
+                          <p className="text-xs text-gray-400">※最大ファイルサイズ: 50MB</p>
                         </div>
                       </div>
                       {teacherPaperFile && (
@@ -3188,11 +3189,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                     <div key={student.id} className="p-4 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs space-y-2.5">
                                       <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
                                         <span className="font-bold text-gray-900 text-sm">{student.name} <span className="text-xs font-normal text-gray-500">({student.class}・出席番号 {(student as any).attendance_number ?? "未設定"})</span></span>
-                                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">{sub.submittedAt}{sub.late && <strong className="ml-2 text-rose-700">遅れ</strong>}</span>
+                                        <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">{sub.submittedAt}{sub.late && <strong className="ml-2 text-rose-700">遅れ</strong>}</span>
                                       </div>
                                       
                                       <div className="space-y-1">
-                                        <p className="font-bold text-gray-700 text-[11px]">【生徒入力コメント・報告文】</p>
+                                        <p className="font-bold text-gray-700 text-xs">【生徒入力コメント・報告文】</p>
                                         <p className="text-gray-800 bg-white p-3 rounded-lg border border-emerald-200/60 whitespace-pre-wrap text-xs leading-relaxed">
                                           {sub.submittedText || '（入力されたテキストはありません）'}
                                         </p>
@@ -3212,7 +3213,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                           </button>
                                         </div>
                                       ) : (
-                                        <p className="text-gray-400 italic text-[11px]">※添付ファイルなし</p>
+                                        <p className="text-gray-400 italic text-xs">※添付ファイルなし</p>
                                       )}
                                     </div>
                                   );
@@ -3232,7 +3233,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                     <span className="font-bold text-gray-900">{student.name}</span>
                                     <span className="ml-2 text-gray-400 font-medium">({student.class} / {student.id})</span>
                                   </div>
-                                  <span className="text-[10px] font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded">未提出</span>
+                                  <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded">未提出</span>
                                 </div>
                               ))}
                             </div>
@@ -3362,7 +3363,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <div className="space-y-1 pointer-events-none">
                         <Bot className="w-8 h-8 text-orange-500 mx-auto" />
                         <p className="text-xs font-bold text-gray-700">クリックまたはドラッグ＆ドロップでWord・PDFファイルを選択</p>
-                        <p className="text-[10px] text-gray-400">※ .docx・.pdf形式、1ファイル8MBまで。原稿をAIに送信します。</p>
+                        <p className="text-xs text-gray-400">※ .docx・.pdf形式、1ファイル50MBまで。8MB超のPDFは抽出テキストをAIに送信します（図表画像は対象外）。</p>
                       </div>
                     </div>
                   </div>
@@ -3390,18 +3391,18 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             </div>
                             <div className="flex items-center gap-2">
                               {item.status === 'processing' && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 flex items-center gap-1">
+                                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 flex items-center gap-1">
                                   <span className="w-2.5 h-2.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> AI添削中...
                                 </span>
                               )}
                               {item.status === 'done' && !item.sent && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">添削完了</span>
+                                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">添削完了</span>
                               )}
                               {item.status === 'error' && !item.sent && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">要手動入力</span>
+                                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">要手動入力</span>
                               )}
                               {item.sent && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 flex items-center gap-1">
+                                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 flex items-center gap-1">
                                   <Check className="w-3 h-3" /> 送信済み
                                 </span>
                               )}
@@ -3424,7 +3425,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             <div className="pt-3 border-t border-gray-100 space-y-3">
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-gray-500">送信先の生徒</label>
+                                  <label className="text-xs font-bold text-gray-500">送信先の生徒</label>
                                   <select
                                     value={item.studentId}
                                     onChange={(e) => updateAiReviewItem(item.id, { studentId: e.target.value })}
@@ -3437,7 +3438,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   </select>
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-gray-500">一言コメント（任意）</label>
+                                  <label className="text-xs font-bold text-gray-500">一言コメント（任意）</label>
                                   <input
                                     type="text"
                                     value={item.note}
@@ -3461,7 +3462,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           )}
 
                           {item.sent && (
-                            <p className="text-[11px] text-blue-700 bg-blue-50 border border-blue-100 rounded-xl p-3">
+                            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-xl p-3">
                               {schoolStudents.find(s => s.id === item.studentId)?.name || '選択した生徒'} さんに送信しました。
                             </p>
                           )}
@@ -3509,9 +3510,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               <td className="py-3 px-6 text-gray-600">{student.class}</td>
                               <td className="py-3 px-6">
                                 {student.pass === '' ? (
-                                  <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px]">初期値 ()</span>
+                                  <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-xs">初期値 ()</span>
                                 ) : (
-                                  <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold text-[10px]">変更済み</span>
+                                  <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold text-xs">変更済み</span>
                                 )}
                               </td>
                               <td className="py-3 px-6 text-right">
@@ -3717,7 +3718,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       .filter((m): m is typeof studentMenuBase[number] => !!m).filter(m=>tabMode(m.name)!=='hidden');
 
     return (
-      <div className="min-h-screen bg-gray-50 flex font-sans text-gray-900">
+      <div className="lti-shell min-h-screen bg-gray-50 flex font-sans text-gray-900">
         <PaperPreviewModal previewPaper={previewPaper} setPreviewPaper={setPreviewPaper} step={step} schoolId={schoolId} paperReplyDraft={paperReplyDraft} setPaperReplyDraft={setPaperReplyDraft} handleSendPaperMessage={handleSendPaperMessage} />
         <PdfPreviewModal previewPdfModalData={previewPdfModalData} setPreviewPdfModalData={setPreviewPdfModalData} />
         <MaterialPreviewModal previewMaterialModalData={previewMaterialModalData} setPreviewMaterialModalData={setPreviewMaterialModalData} />
@@ -3733,7 +3734,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
           setStudentSubmitSuccessMsg={setStudentSubmitSuccessMsg}
         />
 
-        <aside className="w-64 bg-white shadow-sm flex flex-col border-r border-gray-200">
+        <aside className="lti-sidebar w-64 shrink-0 bg-white shadow-sm flex flex-col border-r border-gray-200">
           <div className="h-16 flex items-center px-6 border-b border-gray-200 justify-between">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">L</div>
@@ -3779,7 +3780,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   >
                     <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />
                     {Icon && <Icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`} />}
-                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-[10px] ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>}
+                    <span className="truncate">{item.name}</span>{tabMode(item.name)!=='enabled'&&<span className="text-xs ml-auto">{tabMode(item.name)==='premium'?'プレミアム':'今後実装予定'}</span>}
                   </button>
                 );
               })}
@@ -3813,7 +3814,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
             </div>
           </header>
 
-          <main className="flex-1 p-8 overflow-y-auto">
+          <main className="flex-1 min-w-0 p-4 md:p-6 xl:p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto space-y-6">
 
               {tabMode(currentTab)!=='enabled'?<FeatureUnavailable mode={tabMode(currentTab)}/>:currentTab === 'ホーム' ? (
@@ -3844,7 +3845,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           <div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="flex items-center justify-between mb-1">
                               <h4 className="font-bold text-gray-900 text-xs">{n.title}</h4>
-                              <span className="text-[10px] font-mono text-gray-400">{n.date}</span>
+                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
                             </div>
                             <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
                           </div>
@@ -3904,7 +3905,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               )}
                               <PdfView path={submission.storagePath} />
                               {studentFeedbackMessages.filter(m=>m.assignmentId===String(assign.id)&&m.studentId===currentStudentId).map(m=><div key={m.id} className="p-3 bg-white rounded-lg"><strong>{m.teacherName}先生から</strong><p className="whitespace-pre-wrap">{m.note}</p></div>)}
-                              <p className="text-[10px] text-gray-400 font-mono pt-1">提出日時: {submission.submittedAt}</p>
+                              <p className="text-xs text-gray-400 font-mono pt-1">提出日時: {submission.submittedAt}</p>
                               
                               <button
                                 onClick={() => {
@@ -4014,7 +4015,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           <div className="p-6 space-y-3">
                             <h3 className="font-bold text-base text-gray-900 leading-snug">{mat.title}</h3>
                             <p className="text-xs text-gray-500">{mat.description}</p>
-                            <p className="text-[11px] text-gray-400 font-mono flex items-center gap-1">
+                            <p className="text-xs text-gray-400 font-mono flex items-center gap-1">
                               <BookOpen className="w-3.5 h-3.5 text-emerald-500" /> {mat.slides?.length || 0} 枚のスライド
                             </p>
                             <div className="pt-2 flex justify-end">
@@ -4057,7 +4058,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-emerald-50 text-emerald-700">{c.category}</span>
                             <div className="flex items-center gap-2">
                               {isContestExpired(c) && (
-                                <span className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">期限切れ</span>
+                                <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">期限切れ</span>
                               )}
                               <span className="text-xs text-gray-400 font-mono">{c.date}</span>
                             </div>
@@ -4104,7 +4105,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <Bot className="w-3.5 h-3.5 text-gray-300 shrink-0" />
                                 <span className="text-xs font-bold text-gray-600 truncate">{m.paperTitle}</span>
-                                <span className="text-[11px] text-gray-400 shrink-0">{m.teacherName} 先生 | {m.sentAt}</span>
+                                <span className="text-xs text-gray-400 shrink-0">{m.teacherName} 先生 | {m.sentAt}</span>
                               </div>
                               <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
                             </button>
@@ -4119,14 +4120,14 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             >
                               <div className="flex items-center gap-2">
                                 {!m.read && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500 text-white shrink-0">NEW</span>
+                                  <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-rose-500 text-white shrink-0">NEW</span>
                                 )}
                                 <div>
                                   <h3 className="text-sm font-bold text-gray-900">{m.paperTitle}</h3>
-                                  <p className="text-[11px] text-gray-400">{m.teacherName} 先生 | {m.sentAt}</p>
+                                  <p className="text-xs text-gray-400">{m.teacherName} 先生 | {m.sentAt}</p>
                                 </div>
                               </div>
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 flex items-center gap-1 shrink-0">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 flex items-center gap-1 shrink-0">
                                 <Bot className="w-3 h-3" /> AI添削
                               </span>
                             </button>
@@ -4141,7 +4142,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   <AlertCircle className="w-3.5 h-3.5" /> 修正点
                                 </p>
                                 {m.result.corrections.length === 0 ? (
-                                  <p className="text-[11px] text-gray-400 italic">なし</p>
+                                  <p className="text-xs text-gray-400 italic">なし</p>
                                 ) : (
                                   <ul className="space-y-1.5">
                                     {m.result.corrections.map((line, i) => (
@@ -4159,7 +4160,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   <Lightbulb className="w-3.5 h-3.5" /> アドバイス
                                 </p>
                                 {m.result.advice.length === 0 ? (
-                                  <p className="text-[11px] text-gray-400 italic">なし</p>
+                                  <p className="text-xs text-gray-400 italic">なし</p>
                                 ) : (
                                   <ul className="space-y-1.5">
                                     {m.result.advice.map((line, i) => (
@@ -4177,7 +4178,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   <FlaskConical className="w-3.5 h-3.5" /> 追加実験の方向性
                                 </p>
                                 {m.result.nextExperiments.length === 0 ? (
-                                  <p className="text-[11px] text-gray-400 italic">なし</p>
+                                  <p className="text-xs text-gray-400 italic">なし</p>
                                 ) : (
                                   <ul className="space-y-1.5">
                                     {m.result.nextExperiments.map((line, i) => (
@@ -4194,7 +4195,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             {m.read && (
                               <button
                                 onClick={() => toggleFeedbackExpanded(m.id)}
-                                className="text-[11px] font-bold text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                                className="text-xs font-bold text-gray-400 hover:text-gray-600 flex items-center gap-1"
                               >
                                 <ChevronRight className="w-3 h-3 rotate-90" /> たたむ
                               </button>

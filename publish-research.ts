@@ -7,7 +7,8 @@ export async function prepareResearch(id:number){
  if(paper.aiState)throw new Error('AI解析は開始済みです。重複課金を防ぐため再実行しません。結果が保存されていない場合は運営で確認してください。');
  if(!paper.storagePath)throw new Error('解析対象のPDFまたはWordファイルがありません。');
  const {data:file,error}=await supabase.storage.from('lti-documents').download(paper.storagePath);if(error)throw error;
- return invokeResearchAI({mode:'register',paperId:String(id),title:paper.title,...await analysisInput(file,paper.storagePath)});
+ let input;try{input=await analysisInput(file,paper.storagePath);}catch(e){const message=e instanceof Error?e.message:'本文抽出に失敗しました。';const current=await readResearch(id);if(current.version===row.version){await supabase.rpc('lti_save_records',{ops:[{action:'update',kind:'papers',id:String(id),version:row.version,data:{...paper,aiInputError:message}}]});}throw Object.assign(new Error(message),{inputError:true});}
+ return invokeResearchAI({mode:'register',paperId:String(id),title:paper.title,...input});
 }
 export async function saveResearchInsight(id:number,analysis:ResearchAnalysis,version:number,publish:boolean){
  const row=await readResearch(id);if(row.version!==version)throw new Error('別の操作で更新されています。閉じて開き直してください。');
