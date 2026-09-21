@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.115.0';
 const url=Deno.env.get('SUPABASE_URL')!;
 const service=createClient(url,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false}});
-const headers={'Access-Control-Allow-Origin':'https://lti-explore.vercel.app','Vary':'Origin','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info','Access-Control-Allow-Methods':'POST, OPTIONS','Cache-Control':'no-store','Content-Type':'application/json'};
+const headers={'Access-Control-Allow-Origin':'https://lti-explore-lab-to-impact.vercel.app','Vary':'Origin','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info','Access-Control-Allow-Methods':'POST, OPTIONS','Cache-Control':'no-store','Content-Type':'application/json'};
 const respond=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers});
 const password=()=>{const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';let value='';while(value.length<10){const bytes=crypto.getRandomValues(new Uint8Array(20));for(const b of bytes){if(b<256-256%alphabet.length)value+=alphabet[b%alphabet.length];if(value.length===10)break;}}return value;};
 async function loginEmail(school:string,id:string){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`${school.toLowerCase()}\0${id.toLowerCase()}`));return Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('')+'@accounts.lti.invalid';}
