@@ -19,16 +19,25 @@ Deno.serve(async req=>{
   if(body.action==='change-password'){
    if(!profile.active)return respond({error:'利用許可が必要です'},403);
    if(profile.initial_password_expires_at&&new Date(profile.initial_password_expires_at)<new Date())return respond({error:'初期パスワードの期限切れです。LTIに再発行を依頼してください'},403);
-   if(typeof body.currentPassword!=='string'||typeof body.newPassword!=='string'||body.newPassword.length<12||body.newPassword.length>128||body.newPassword===body.currentPassword)return respond({error:'新しいパスワードは現在と異なる12〜128文字にしてください'},400);
+   if((!profile.must_change_password&&typeof body.currentPassword!=='string')||typeof body.newPassword!=='string'||body.newPassword.length<12||body.newPassword.length>128||body.newPassword===body.currentPassword)return respond({error:'新しいパスワードは現在と異なる12〜128文字にしてください'},400);
    // getUser above verifies the token; AAL is read only after this verification.
    const claims=JSON.parse(atob(jwt.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
    const {data:factors,error:fe}=await service.auth.admin.mfa.listFactors({userId:user.id});if(fe)throw fe;
    if((profile.role==='admin'||factors.factors.some(f=>f.status==='verified'))&&claims.aal!=='aal2')return respond({error:'二段階認証を完了してください'},403);
+   if(profile.must_change_password){
+    // Only a recent password sign-in after issuance/reset can complete initial setup.
+    // Token refresh and MFA alone must not revive a session from before a reset.
+    const passwordAuth=Array.isArray(claims.amr)?claims.amr.find((a:{method:string;timestamp:number})=>a.method==='password'):null;
+    const signedAt=Number(passwordAuth?.timestamp)*1000;
+    const cutoff=profile.session_valid_after==='-infinity'?0:Date.parse(profile.session_valid_after);
+    if(!Number.isFinite(signedAt)||!Number.isFinite(cutoff)||signedAt<cutoff||signedAt>Date.now()+60000||Date.now()-signedAt>30*60*1000)return respond({error:'初期・仮パスワードでもう一度ログインしてから設定してください'},403);
+   }else{
    // Reauthenticate current password without retaining the resulting session.
    const verifier=createClient(url,Deno.env.get('SUPABASE_ANON_KEY')!,{auth:{persistSession:false,autoRefreshToken:false}});
    const verify=await verifier.auth.signInWithPassword({email:user.email!,password:body.currentPassword});
    if(verify.error||verify.data.user?.id!==user.id)return respond({error:'現在のパスワードを確認してください'},403);
    await verifier.auth.signOut({scope:'local'});
+   }
    const block=await service.from('lti_profiles').update({must_change_password:true,session_valid_after:new Date().toISOString()}).eq('id',user.id);if(block.error)throw block.error;
    const changed=await service.auth.admin.updateUserById(user.id,{password:body.newPassword});if(changed.error)throw changed.error;
    const done=await service.from('lti_profiles').update({must_change_password:false,initial_password_expires_at:null,session_valid_after:new Date().toISOString()}).eq('id',user.id);if(done.error)throw done.error;
