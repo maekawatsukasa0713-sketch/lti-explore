@@ -19,7 +19,7 @@ Deno.serve(async req=>{
   if(body.action==='change-password'){
    if(!profile.active)return respond({error:'利用許可が必要です'},403);
    if(profile.initial_password_expires_at&&new Date(profile.initial_password_expires_at)<new Date())return respond({error:'初期パスワードの期限切れです。LTIに再発行を依頼してください'},403);
-   if((!profile.must_change_password&&typeof body.currentPassword!=='string')||typeof body.newPassword!=='string'||body.newPassword.length<12||body.newPassword.length>128||body.newPassword===body.currentPassword)return respond({error:'新しいパスワードは現在と異なる12〜128文字にしてください'},400);
+   if((!profile.must_change_password&&typeof body.currentPassword!=='string')||typeof body.newPassword!=='string'||body.newPassword.length<8||body.newPassword.length>128||body.newPassword===body.currentPassword)return respond({error:'新しいパスワードは現在と異なる8〜128文字にしてください'},400);
    // getUser above verifies the token; AAL is read only after this verification.
    const claims=JSON.parse(atob(jwt.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
    const {data:factors,error:fe}=await service.auth.admin.mfa.listFactors({userId:user.id});if(fe)throw fe;
