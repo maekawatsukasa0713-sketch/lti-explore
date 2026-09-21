@@ -1765,6 +1765,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                       <button onClick={() => setRejectTargetPaper(paper)} className="px-2.5 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg">差し戻し</button>
                                     </>
                                   )}
+                                  {paper.status === '公開中' && <button onClick={() => handleApprovePaper(paper.id)} className="px-2.5 py-1.5 bg-violet-50 text-violet-700 font-bold rounded-lg border border-violet-200">AI評価・参考情報を編集</button>}
                                   {paper.status === '公開停止' && (
                                     <>
                                       <button onClick={() => handleApprovePaper(paper.id)} className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg border border-emerald-200">
