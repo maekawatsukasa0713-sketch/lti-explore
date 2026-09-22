@@ -4,7 +4,8 @@ export async function readResearch(id:number){const {data,error}=await supabase.
 export async function prepareResearch(id:number){
  const row=await readResearch(id);const paper=row.data;
  if(paper.aiAnalysis)return paper.aiAnalysis as ResearchAnalysis;
- if(paper.aiState)throw new Error('AI解析は開始済みです。重複課金を防ぐため再実行しません。結果が保存されていない場合は運営で確認してください。');
+ // Failed jobs may be retried explicitly. Processing and completed jobs stay locked to avoid duplicate billing.
+ if(paper.aiState&&paper.aiState.state!=='failed')throw new Error('AI解析は開始済みです。処理中の再実行は重複課金の恐れがあります。結果が保存されていない場合は運営で確認してください。');
  if(!paper.storagePath)throw new Error('解析対象のPDFまたはWordファイルがありません。');
  const {data:file,error}=await supabase.storage.from('lti-documents').download(paper.storagePath);if(error)throw error;
  let input;try{input=await analysisInput(file,paper.storagePath);}catch(e){const message=e instanceof Error?e.message:'本文抽出に失敗しました。';const current=await readResearch(id);if(current.version===row.version){await supabase.rpc('lti_save_records',{ops:[{action:'update',kind:'papers',id:String(id),version:row.version,data:{...paper,aiInputError:message}}]});}throw Object.assign(new Error(message),{inputError:true});}
