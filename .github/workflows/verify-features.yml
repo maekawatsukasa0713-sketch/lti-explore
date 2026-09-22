@@ -18,4 +18,5 @@ jobs:
       - run: npm ci
       - run: node tests/research-ai.test.mjs
       - run: node tests/registration.test.mjs
+      - run: node tests/bulk-import.test.mjs
       - run: npm run build
