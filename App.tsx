@@ -1,5 +1,6 @@
 import {AccountManagement} from './accounts';
 import {BulkImport} from './BulkImport';
+import {AdminResearchLibrary} from './AdminResearchLibrary';
 import {InsightApproval} from './InsightApproval';
 import {featureMode,FeatureUnavailable} from './SchoolFeatures';
 import { ResearchLibrary } from './ResearchLibrary';
@@ -1271,6 +1272,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
     const ltiMenu = [
       { name: 'ホーム', icon: Home },
+      { name: 'みんなの論文', icon: BookOpen },
       { name: '教材管理', icon: FileUp },
       { 
         name: 'コンテンツ管理', 
@@ -1392,7 +1394,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
               
               {insightPaper!==null&&<InsightApproval id={insightPaper} onClose={()=>setInsightPaper(null)} onSaved={async(message)=>{setPublicationMessage(message);await cloud.reload();}}/>}
               {publicationMessage&&<p role="status" className="bg-indigo-50 border rounded-xl p-4 text-sm">{publicationMessage}</p>}
-              {ltiCurrentTab==='学校・利用者管理'?<section className="bg-white border rounded-2xl p-6 space-y-4"><h1 className="text-2xl font-bold">学校・利用者管理</h1><p>学校の登録・IDの一括発行・利用機能の設定はこちらから開けます。</p><AccountManagement profiles={cloud.profiles} schools={cloud.schools} profile={profile} reload={cloud.reload}/></section>:ltiCurrentTab==='論文の一括登録・公開'?<BulkImport/>:['ダッシュボード','データ分析','利用状況レポート'].includes(ltiCurrentTab) ? (<AdminAnalytics key={ltiCurrentTab} papers={papers} schools={cloud.schools} profiles={cloud.profiles} rows={cloud.rows} reload={cloud.reload} page={ltiCurrentTab}/>) : ltiCurrentTab === 'ホーム' ? (
+              {ltiCurrentTab==='みんなの論文'?<AdminResearchLibrary onOpen={()=>setSidebarCollapsed(true)}/>:ltiCurrentTab==='学校・利用者管理'?<section className="bg-white border rounded-2xl p-6 space-y-4"><h1 className="text-2xl font-bold">学校・利用者管理</h1><p>学校の登録・IDの一括発行・利用機能の設定はこちらから開けます。</p><AccountManagement profiles={cloud.profiles} schools={cloud.schools} profile={profile} reload={cloud.reload}/></section>:ltiCurrentTab==='論文の一括登録・公開'?<BulkImport/>:['ダッシュボード','データ分析','利用状況レポート'].includes(ltiCurrentTab) ? (<AdminAnalytics key={ltiCurrentTab} papers={papers} schools={cloud.schools} profiles={cloud.profiles} rows={cloud.rows} reload={cloud.reload} page={ltiCurrentTab}/>) : ltiCurrentTab === 'ホーム' ? (
                 <div className="space-y-8">
                   <div>
                     <h1 className="text-2xl font-extrabold text-gray-900">LTI管理ダッシュボードへようこそ</h1>
