@@ -24,7 +24,11 @@ export function BulkImport(){
  setItems(next);setMessage(`${next.length}件を選択しました。${skipped?`${skipped}件は重複・形式・サイズ・件数上限により除外しました。`:''}`);});}
  async function analyze(ids:number[]){let done=0;for(const id of ids){if(stop.current)break;setMessage(`AI解析中：${done+1} / ${ids.length}件。画面を閉じずにお待ちください。`);try{await prepareResearch(id);done++;}catch(e){if((e as {inputError?:boolean}).inputError)continue;setMessage(`${done}件のAI解析を保存しました。処理を止めました：${(e as Error).message} 未解析分は下の一覧に残っています。`);return;}}
  setMessage(`${done}件のAI分類・要約・継続提案を保存しました。内容を確認してから公開してください。${stop.current?'残りの処理は停止しました。':''}`);}
- async function register(){await run(async()=>{const saved:number[]=[];let failed=0;for(const d of items.filter(x=>!x.saved)){if(stop.current)break;try{
+ async function register(){await run(async()=>{
+ const assurance=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+ if(assurance.error)throw assurance.error;
+ if(assurance.data.nextLevel==='aal2'&&assurance.data.currentLevel!=='aal2')throw new Error('運営アカウントの認証期限が切れています。いったんログアウトし、再ログイン後に認証アプリの6桁コードを入力してから、もう一度登録してください。ファイルはまだ送信していません。');
+ const saved:number[]=[];let failed=0;const failures:string[]=[];for(const d of items.filter(x=>!x.saved)){if(stop.current)break;try{
  if(!d.title.trim())throw new Error('タイトルを入力してください。');patch(d.id,{message:'保存中…'});
  const existing=await supabase.from('lti_records').select('id,data').eq('kind','papers').eq('id',String(d.id)).maybeSingle();if(existing.error)throw existing.error;
  if(existing.data){if(existing.data.data.sourceHash!==d.hash)throw new Error('識別番号が重複しました。運営で確認してください。');patch(d.id,{saved:true,message:'登録済み（重複登録しません）'});continue;}
@@ -32,8 +36,8 @@ export function BulkImport(){
  const data={id:d.id,title:d.title.trim(),author:'著者名非公開',schoolName:school.trim()||'学校名未登録',schoolId:'',field:mode==='ai'?'未分類':field,classificationMode:mode,sourceHash:d.hash,bulkImport:true,bulkReviewed:false,storagePath:path,fileName:d.file.name,fileSize:d.file.size,status:'承認待ち',submittedDate:new Date().toISOString().slice(0,10),publishedDate:'',submittedByTeacherId:cloud.profile.id,submittedByTeacherName:cloud.profile.name,abstract:'',views:0};
  const result=await supabase.rpc('lti_save_records',{ops:[{action:'insert',kind:'papers',id:String(d.id),data}]});if(result.error)throw result.error;
  patch(d.id,{saved:true,message:'保存済み・非公開'});saved.push(d.id);
- }catch(e){failed++;patch(d.id,{message:'登録失敗：'+(e as Error).message});}}
- await cloud.reload();if((ai||mode==='ai')&&saved.length&&!stop.current)await analyze(saved);else setMessage(`${saved.length}件を非公開で保存しました。${failed}件の登録失敗。下の一覧で内容を確認してください。`);
+ }catch(e){failed++;const reason=(e as Error).message||'原因不明のエラー';failures.push(`${d.file.name}：${reason}`);patch(d.id,{message:'登録失敗：'+reason});}}
+ await cloud.reload();if((ai||mode==='ai')&&saved.length&&!stop.current)await analyze(saved);else setMessage(`${saved.length}件を非公開で保存しました。${failed}件の登録失敗。${failures.length?`\n\n失敗理由：\n${failures.slice(0,5).join('\n')}${failures.length>5?`\nほか${failures.length-5}件`:''}`:''}`);
  });}
  async function publish(){const ids=Object.keys(selected);if(!ids.length)return;if(!confirm(`選択した${ids.length}件を「みんなの論文」に公開しますか？`))return;await run(async()=>{let done=0;for(let offset=0;offset<ids.length;offset+=50){if(stop.current)break;const chunk=ids.slice(offset,offset+50);const fresh=await supabase.from('lti_records').select('id,version,data').eq('kind','papers').in('id',chunk);if(fresh.error)throw fresh.error;const ops=publicationOps(fresh.data,Object.fromEntries(chunk.map(id=>[id,selected[id]])));const result=await supabase.rpc('lti_save_records',{ops});if(result.error)throw result.error;done+=ops.length;setSelected(old=>{const next={...old};chunk.forEach(id=>delete next[id]);return next;});setMessage(`公開済み ${done} / ${ids.length}件`);}setMessage(`${done}件を公開しました。${done<ids.length?'残りは未公開のままです。':''}`);});}
  if(cloud.profile.role!=='admin')return <p>この機能はLTI運営専用です。</p>;
