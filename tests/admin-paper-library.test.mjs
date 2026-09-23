@@ -26,5 +26,9 @@ try{
  assert.match(adminSource,/const rows=cloud\.rows\.filter\(r=>r\.kind==='papers'\)/);
  assert.match(adminSource,/schoolNameOverride:/);
  assert.match(adminSource,/version,data/);
+ assert.match(adminSource,/showEvaluation/);
+ const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
+ assert.match(detailSource,/ResearchEvaluation/);
+ assert.match(detailSource,/showEvaluation&&result\?\.evaluation/);
  console.log('PASS: admin can browse all statuses; public library only shows published papers and honors school-name overrides');
 }finally{unlinkSync(path);}
