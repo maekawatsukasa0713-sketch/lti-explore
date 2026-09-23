@@ -1,3 +1,4 @@
+import {generateReview,ReviewError,reviewSections} from './review.ts';
 import {claimPaper} from './registration.ts';
 const headers={'Access-Control-Allow-Origin':'https://lti-explore-lab-to-impact.vercel.app','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, traceparent, tracestate, baggage','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin','Content-Type':'application/json','Cache-Control':'no-store'};
 const reply=(data:unknown,status=200)=>new Response(JSON.stringify(data),{headers,status});
@@ -81,11 +82,12 @@ Deno.serve(async(req:Request)=>{
   if(body.mode==='review'&&!['teacher','admin'].includes(profile.role))return reply({error:'AI添削は教員・運営向けの機能です。'},403);
   if(body.mode==='register'&&profile.role!=='admin')return reply({error:'公開時のAI解析はLTI運営が行います。'},403);
   if(body.mode==='review'){const permission=await fetch(base+'/rest/v1/rpc/lti_feature_enabled',{method:'POST',headers:{...authHeaders,'content-type':'application/json'},body:JSON.stringify({tab_name:'AI添削'}),signal:AbortSignal.timeout(8000)});if(!permission.ok||await permission.json()!==true)return reply({error:'この学校ではAI添削を利用できません。'},403);}
+  if(body.mode==='review'&&body.section!==undefined&&!reviewSections.includes(body.section))return reply({error:'添削項目が不正です。'},400);
   if(!key)return reply({error:'AI連携の設定待ちです。LTI運営がAnthropic APIキーを設定してください。'},503);
   const text=typeof body.text==='string'?body.text:'';const pdf=typeof body.pdf==='string'?body.pdf:'';
   if(pdf){if(pdf.length>11200000||!/^JVBERi0[A-Za-z0-9+/=\r\n]*$/.test(pdf))return reply({error:'PDF形式・サイズを確認してください。'},400);}else if(text.trim().length<40||text.length>80000)return reply({error:'40〜80,000文字の本文が必要です。'},400);
   const basis=String(body.basis||'送信された原稿').slice(0,120);const title=String(body.title||'研究論文').slice(0,300);
-  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([user.id,model,body.mode,title,basis,text,pdf])));const cacheKey=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');const now=Date.now();
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([user.id,model,body.mode,body.section||'all','review-v2',title,basis,text,pdf])));const cacheKey=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');const now=Date.now();
   for(const [k,v] of cache)if(now-v.time>3600000)cache.delete(k);
   const hit=cache.get(cacheKey);if(body.mode==='review'&&hit&&body.force!==true)return reply(hit.value);
   if(body.mode==='register'){if(typeof body.paperId!=='string'||body.paperId.length>100)return reply({error:'研究成果IDを確認してください。'},400);registration=await claimPaper(base,authHeaders,body.paperId,body.refreshEvaluation===true);if(registration.result)return reply(registration.result);}
@@ -123,13 +125,15 @@ Deno.serve(async(req:Request)=>{
    return reply({accepted:true,state:'processing'},202);
   }
   const content:any[]=[];if(pdf)content.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:pdf}});
-  content.push({type:'text',text:JSON.stringify({task:body.mode==='review'?'研究添削':'研究要約と継続研究提案。本文の主な研究対象から主分野を1つ分類し、日本語で短い根拠を記載する。分野不明は未分類。',title,basis,untrusted_document:text||'添付PDF'})});
-  stage='anthropic';const aiStartedAt=Date.now();console.log('Claude request started',{mode:body.mode,hasPdf:!!pdf,inputChars:text.length});
-  const response=await fetchAnthropicWithRetry({method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model,max_tokens:7000,system:system+'\n'+continuationGuidance+(body.mode==='register'?'\n'+publicationGuidance:''),messages:[{role:'user',content}],tools:[{name:'submit_analysis',description:'研究の要約、提案、添削結果を構造化して返す',input_schema:body.mode==='register'?registrationSchema:schema}],tool_choice:{type:'tool',name:'submit_analysis'}})},95000);
-  console.log('Claude request finished',{mode:body.mode,status:response.status,durationMs:Date.now()-aiStartedAt});
-  if(!response.ok){const providerError=(await response.text()).slice(0,2000);console.error('Claude request rejected',{status:response.status,body:providerError});await refundQuota();const providerReason=response.status===400&&/schema is too complex/i.test(providerError)?'anthropic_400_schema_complexity':response.status===400&&/schema|input_schema|structured/i.test(providerError)?'anthropic_400_schema':'anthropic_'+response.status;const message=response.status===429?'AIの利用上限に達しました。時間をおいて再試行してください。':response.status===401?'AI接続キーを確認してください。':response.status===402?'Claude APIの利用残高または支払い設定を確認してください。':response.status===400?'AIへの解析形式をAnthropicが受理できませんでした。LTI運営側で確認します。':'AI提供元に接続できませんでした。';if(registration?.fail)await registration.fail(providerReason);return reply({error:message},response.status===429?429:502);}
-  const payload=await response.json();const result=payload.content?.find((c:any)=>c.type==='tool_use'&&c.name==='submit_analysis')?.input;
-  if(payload.stop_reason==='max_tokens'||!validResult(result)||(body.mode==='register'&&(!fields.includes(result.classification?.field)||typeof result.classification?.reason!=='string'||result.classification.reason.length>500))){const reason=payload.stop_reason==='max_tokens'?'max_tokens':'invalid_response';await refundQuota();console.error('AI structured response incomplete',{reason,stop_reason:payload.stop_reason,output_tokens:payload.usage?.output_tokens});if(registration?.fail)await registration.fail(reason);return reply({error:reason==='max_tokens'?'AIの出力が長くなり、回答が途中で切れました。再解析してください。':'AIの回答が不完全です。再解析してください。'},502);}
-  const value={...result,basis,generatedAt:new Date().toISOString()};stage='save';if(registration?.finish)await registration.finish(value);if(cache.size>=30)cache.delete(cache.keys().next().value!);cache.set(cacheKey,{time:now,value});return reply(value);
+  content.push({type:'text',text:JSON.stringify({task:'研究添削',title,basis,untrusted_document:text||'添付PDF'})});
+  try{
+   const result=await generateReview({key,model,content,section:body.section});
+   const value={...result,title,summary:[],suggestions:[],basis,generatedAt:new Date().toISOString()};
+   if(cache.size>=30)cache.delete(cache.keys().next().value!);cache.set(cacheKey,{time:Date.now(),value});return reply(value);
+  }catch(e){
+   await refundQuota();
+   if(e instanceof ReviewError){console.warn('Review generation failed',{code:e.code,section:body.section||'all'});return reply({error:e.message,code:e.code,retryable:e.retryable},502);}
+   throw e;
+  }
  }catch(e){const timedOut=stage==='anthropic'&&e instanceof Error&&['TimeoutError','AbortError'].includes(e.name);const reason=timedOut?'anthropic_timeout':'request_failed';console.error('Research AI request failed',{stage,reason,name:e instanceof Error?e.name:'unknown',message:e instanceof Error?e.message:'unknown'});await refundQuota();if(registration?.fail)try{await registration.fail(reason);}catch{}return reply({error:timedOut?'AIの応答に時間がかかり、今回の解析を停止しました。原稿は保存されています。もう一度解析してください。':'解析中の通信または保存に失敗しました。原稿は保存されています。再解析してください。'},timedOut?504:502);}
 });
