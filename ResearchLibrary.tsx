@@ -11,6 +11,7 @@ export function ResearchLibrary<T extends LibraryPaper>({papers,onOpen,includeUn
  const matched=visible.filter(p=>words.every(w=>[p.title,p.author,p.schoolNameOverride||p.schoolName,p.field,p.abstract].join(' ').normalize('NFKC').toLowerCase().includes(w)));
  const fields=[...new Set(visible.map(p=>p.field).filter(Boolean))];
  const metricKey=visible.map(p=>String(p.id)).sort().join(',');
+ useEffect(()=>{setRandomOrder(current=>{const next={...current};let changed=false;for(const p of visible){const id=String(p.id);if(next[id]===undefined){next[id]=Math.random();changed=true;}}return changed?next:current;});},[metricKey]);
  useEffect(()=>{let active=true;if(!metricKey){setMetrics({});return()=>{active=false;};}void loadPaperEngagement(visible.map(p=>p.id)).then(result=>{if(active){setMetrics(result.metrics);setBookmarked(result.bookmarked);}}).catch(()=>{});return()=>{active=false;};},[metricKey]);
  const results=matched.filter(p=>(field==='すべて'||p.field===field)&&(!bookmarksOnly||bookmarked.has(String(p.id)))).sort((a,b)=>sort==='random'?(randomOrder[String(a.id)]??0)-(randomOrder[String(b.id)]??0):sort==='title'?a.title.localeCompare(b.title,'ja'):String(b.publishedDate||b.submittedDate).localeCompare(String(a.publishedDate||a.submittedDate)));
  return <section className="space-y-6"><header className="space-y-2"><h2 className="text-2xl font-extrabold text-slate-900">{heading}</h2><p className="text-sm text-slate-500">{description??(includeUnpublished?'LTI運営用：全学校の論文を閲覧・検索できます。':'高校生の探究論文を読み、研究の工夫や次のアイデアに出会いましょう。')}</p></header>
