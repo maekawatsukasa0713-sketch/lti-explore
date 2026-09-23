@@ -2,7 +2,7 @@ import {AIActivity} from './AIActivity';
 import {useEffect,useRef,useState} from 'react';
 import {useCloud,uploadPdf,PdfView,supabase} from './cloud';
 import {prepareResearch} from './publish-research';
-import {runResearchBatch} from './research-batch';
+import {runResearchBatch,RESEARCH_CONCURRENCY} from './research-batch';
 import {RESEARCH_FIELDS,publicationOps} from './research-fields';
 
 type Item={id:number;hash:string;file:File;title:string;path?:string;saved?:boolean;message:string};
@@ -32,7 +32,7 @@ export function BulkImport(){
   try{
    const result=await runResearchBatch(ids,prepareResearch,()=>stop.current,p=>{
     const waiting=p.total-p.started;
-    setMessage(`AI解析（最大3件同時）：保存済み ${p.saved}件 / ${p.total}件・処理中 ${p.active}件・待機中 ${waiting}件。本文抽出失敗 ${p.inputFailed}件・解析失敗 ${p.failed}件。${p.stopReason||stop.current?'新しい解析の受付を停止し、処理中の結果を待っています。':'待機中の論文を続けて解析する間は、この画面を開いたままにしてください。'}`);
+    setMessage(`AI解析（最大${RESEARCH_CONCURRENCY}件同時）：保存済み ${p.saved}件 / ${p.total}件・処理中 ${p.active}件・待機中 ${waiting}件。本文抽出失敗 ${p.inputFailed}件・解析失敗 ${p.failed}件。${p.stopReason||stop.current?'新しい解析の受付を停止し、処理中の結果を待っています。':p.retryAt>Date.now()?'APIの一時制限により待機中です。時間をおいて自動で再開します。':'待機中の論文を続けて解析する間は、この画面を開いたままにしてください。'}`);
    });
    setMessage(`${result.saved}件のAI分類・要約・継続提案を保存しました。${result.inputFailed}件は本文抽出に失敗しました。${result.failed}件はAI解析に失敗しました。${result.stopReason?`処理を停止：${result.stopReason} 未開始 ${result.total-result.started}件。`:''}${result.failed||result.stopReason?'未解析・失敗分は一覧から再解析できます。':''}結果を確認してから公開してください。`);
   }finally{setAnalyzing(false);}
