@@ -7,7 +7,7 @@ import {RESEARCH_FIELDS,publicationOps} from './research-fields';
 type Item={id:number;hash:string;file:File;title:string;path?:string;saved?:boolean;message:string};
 const input='block w-full border border-slate-200 rounded-lg p-2 mt-1 bg-white text-sm';
 const button='rounded-lg border px-4 py-2 text-sm disabled:opacity-40';
-const canAnalyze=(data:any)=>!data.aiAnalysis&&(!data.aiState||data.aiState.state==='failed')&&!data.aiInputError;
+const canAnalyze=(data:any)=>!data.aiAnalysis&&(!data.aiState||data.aiState.state==='failed'||(data.aiState.state==='processing'&&Date.now()-Date.parse(data.aiState.startedAt||'')>165000))&&!data.aiInputError;
 export function BulkImport(){
  const [analyzing,setAnalyzing]=useState(false);
  const cloud=useCloud();const [items,setItems]=useState<Item[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
@@ -25,7 +25,7 @@ export function BulkImport(){
  if(next.some(d=>d.hash===hash)||cloud.rows.some(r=>r.kind==='papers'&&r.data.sourceHash===hash)){skipped++;continue;}
  next.push({id:parseInt(hash.slice(0,13),16),hash,file,title:file.name.replace(/\.[^.]+$/,''),message:'未登録'});}
  setItems(next);setMessage(`${next.length}件を選択しました。${skipped?`${skipped}件は重複・形式・サイズ・件数上限により除外しました。`:''}`);});}
- async function analyze(ids:number[]){setAnalyzing(true);try{let done=0,skipped=0;for(const id of ids){if(stop.current)break;setMessage(`AI解析中：${done+skipped+1} / ${ids.length}件。完了までこの画面を開いてください。`);try{await prepareResearch(id);done++;}catch(e){if((e as {inputError?:boolean}).inputError){skipped++;continue;}setMessage(`${done}件のAI解析を保存しました。${skipped}件は本文抽出に失敗しました。処理を停止：${(e as Error).message} 未解析・失敗分は一覧から再解析できます。`);return;}}
+ async function analyze(ids:number[]){setAnalyzing(true);try{let done=0,skipped=0;for(const id of ids){if(stop.current)break;setMessage(`AI解析を受付中：${done+skipped+1} / ${ids.length}件。画面を閉じてもサーバーで処理が続きます。`);try{await prepareResearch(id);done++;}catch(e){if((e as {inputError?:boolean}).inputError){skipped++;continue;}setMessage(`${done}件のAI解析を保存しました。${skipped}件は本文抽出に失敗しました。処理を停止：${(e as Error).message} 未解析・失敗分は一覧から再解析できます。`);return;}}
  setMessage(`${done}件のAI分類・要約・継続提案を保存しました。${skipped}件は本文抽出に失敗しました。結果を確認してから公開してください。${stop.current?'残りの処理は停止しました。':''}`);}finally{setAnalyzing(false);}}
  async function register(){await run(async()=>{
  const assurance=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
