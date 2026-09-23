@@ -4,6 +4,7 @@ import {ResearchLibrary,type LibraryPaper} from './ResearchLibrary';
 import {ResearchDetail} from './ResearchDetail';
 import {InsightApproval} from './InsightApproval';
 import {RESEARCH_FIELDS} from './research-fields';
+import {prepareResearch} from './publish-research';
 import type {ResearchAnalysis} from './research-ai';
 
 type Paper=LibraryPaper & {aiAnalysis?:ResearchAnalysis;schoolId?:string};
@@ -24,6 +25,13 @@ export function AdminResearchLibrary({onOpen}:{onOpen:()=>void}){
  const papers=rows.map(r=>({...r.data,id:Number(r.id),schoolName:displayName(r.data as Paper)}) as Paper);
  const paper=row?({...row.data,id:Number(row.id),schoolName:displayName(row.data as Paper)} as Paper):null;
  function beginEdit(){if(!paper||!row)return;setDraft({title:paper.title||'',field:paper.field||'未分類',schoolName:paper.schoolName||'',author:paper.author||''});setVersion(row.version);setMessage('');setEditing(true);}
+ async function generateEvaluation(){
+  if(lock.current||!row||!paper?.aiAnalysis||paper.aiAnalysis.evaluation)return;
+  lock.current=true;setBusy(true);setMessage('5観点評価を生成しています。論文本文をAIで再解析します。');
+  try{await prepareResearch(Number(row.id));await cloud.reload();setMessage('5観点評価を生成しました。LTI側の五角形に反映しました。');}
+  catch(e){setMessage(e instanceof Error?e.message:(e as {message?:string}).message||'5観点評価の生成に失敗しました。');}
+  finally{lock.current=false;setBusy(false);}
+ }
  async function save(){
   if(lock.current||!row||cloud.profile.role!=='admin')return;
   if(!draft.title.trim()||!draft.field.trim()){setMessage('タイトルと分野を入力してください。');return;}
@@ -50,7 +58,7 @@ export function AdminResearchLibrary({onOpen}:{onOpen:()=>void}){
  <div className={paper?'hidden':''}><ResearchLibrary papers={papers} includeUnpublished onOpen={p=>{setSelected(String(p.id));setEditing(false);setInsight(false);setMessage('');onOpen();}}/></div>
  {selected&&!paper&&<p role="status">この論文は削除されたか、閲覧できなくなりました。</p>}
  {paper&&<>
- <div className="flex flex-wrap items-center gap-3"><span className="rounded-full border bg-white px-3 py-2 text-sm font-bold">公開状況：{paper.status}</span><button type="button" disabled={editing||busy||insight} onClick={beginEdit} className="rounded-xl bg-indigo-600 px-4 py-3 text-white disabled:opacity-40">タイトル・分野・学校名・著者名を編集</button><button type="button" disabled={editing||busy||insight} onClick={()=>setInsight(true)} className="rounded-xl bg-violet-600 px-4 py-3 text-white disabled:opacity-40">AIの要約・継続提案を編集</button></div>
+ <div className="flex flex-wrap items-center gap-3"><span className="rounded-full border bg-white px-3 py-2 text-sm font-bold">公開状況：{paper.status}</span><button type="button" disabled={editing||busy||insight} onClick={beginEdit} className="rounded-xl bg-indigo-600 px-4 py-3 text-white disabled:opacity-40">タイトル・分野・学校名・著者名を編集</button><button type="button" disabled={editing||busy||insight} onClick={()=>setInsight(true)} className="rounded-xl bg-violet-600 px-4 py-3 text-white disabled:opacity-40">AIの要約・継続提案を編集</button>{paper.aiAnalysis&&!paper.aiAnalysis.evaluation&&<button type="button" disabled={editing||busy||insight} onClick={()=>void generateEvaluation()} className="rounded-xl border border-violet-300 bg-white px-4 py-3 text-violet-700 font-bold disabled:opacity-40">5観点評価を生成</button>}</div>
  {editing&&<section aria-label="論文情報の編集" className="rounded-2xl border bg-white p-5 space-y-4"><h2 className="font-bold text-lg">論文情報の編集</h2><p className="text-xs text-slate-500">学校名は表示用の名称です。所属学校IDや元のPDF、AI解析結果は変更しません。未公開の論文を編集しても自動公開はされません。</p><fieldset disabled={busy} className="grid sm:grid-cols-2 gap-4">{(['title','schoolName','author'] as const).map((key,i)=><label key={key} className="text-sm">{['タイトル','学校名','著者名'][i]}<input className={input} value={draft[key]} onChange={e=>setDraft(d=>({...d,[key]:e.target.value}))}/></label>)}<label className="text-sm">分野<select className={input} value={draft.field} onChange={e=>setDraft(d=>({...d,field:e.target.value}))}>{[...new Set([...RESEARCH_FIELDS,draft.field].filter(Boolean))].map(f=><option key={f}>{f}</option>)}</select></label></fieldset><div className="flex gap-3"><button type="button" disabled={busy} onClick={()=>void save()} className="rounded-xl bg-indigo-600 px-4 py-2 text-white disabled:opacity-40">{busy?'保存中…':'変更を保存'}</button><button type="button" disabled={busy} onClick={()=>setEditing(false)} className="rounded-xl border px-4 py-2">キャンセル</button></div></section>}
  <ResearchDetail paper={paper} showEvaluation onBack={()=>{if(busy||insight)return;if(editing&&!window.confirm('未保存の編集を破棄して一覧に戻りますか？'))return;setSelected(null);setEditing(false);setMessage('');}}/>
  {insight&&<InsightApproval key={paper.id} id={paper.id} onClose={()=>setInsight(false)} onSaved={async text=>{setMessage(text);await cloud.reload();}}/>}
