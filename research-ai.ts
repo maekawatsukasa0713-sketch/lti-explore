@@ -1,9 +1,13 @@
 import {supabase} from './client';
 import type {Evaluation} from './ResearchEvaluation';
 export type ResearchAnalysis={evaluation?:Evaluation;classification?:{field:string;reason:string};title:string;summary:string[];suggestions:{title:string;description:string;tags:string[]}[];corrections:string[];advice:string[];nextExperiments:string[];generatedAt:string;basis:string};
-export async function invokeResearchAI(body:Record<string,unknown>,signal?:AbortSignal):Promise<ResearchAnalysis>{
+export type ResearchAccepted={accepted:true;state:'processing'};
+export function invokeResearchAI(body:Record<string,unknown>&{mode:'review'},signal?:AbortSignal):Promise<ResearchAnalysis>;
+export function invokeResearchAI(body:Record<string,unknown>&{mode:'register'},signal?:AbortSignal):Promise<ResearchAnalysis|ResearchAccepted>;
+export async function invokeResearchAI(body:Record<string,unknown>,signal?:AbortSignal):Promise<ResearchAnalysis|ResearchAccepted>{
  const {data,error}=await supabase.functions.invoke('research-ai',{body,signal});
  if(error){let message='AI解析に接続できませんでした。時間をおいて再試行してください。';try{const result=await error.context?.json();message=result?.error||message;}catch{}throw new Error(message);}
+ if(data?.accepted===true&&data?.state==='processing')return data as ResearchAccepted;
  if(!Array.isArray(data?.summary)||!Array.isArray(data?.corrections))throw new Error('AIの回答を読み取れませんでした。再試行してください。');return data;
 }
 export async function analysisInput(file:Blob,name:string){
