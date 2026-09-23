@@ -12,14 +12,17 @@ type Metadata={title:string;field:string;schoolName:string;author:string};
 const input='block w-full mt-1 border border-slate-300 rounded-xl p-3 bg-white text-sm';
 export function AdminResearchLibrary({onOpen}:{onOpen:()=>void}){
  const cloud=useCloud();
- const [selected,setSelected]=useState<string|null>(null);
+ const [selected,setSelected]=useState<string|null>(null);const [section,setSection]=useState<'library'|'archive'>('library');
  const [editing,setEditing]=useState(false),[insight,setInsight]=useState(false);
  const [draft,setDraft]=useState<Metadata>({title:'',field:'',schoolName:'',author:''});
  const [version,setVersion]=useState(0),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const lock=useRef(false);
- // Only this admin view includes unpublished papers. The public library still filters by status.
- const rows=cloud.rows.filter(r=>r.kind==='papers');
- const row=rows.find(r=>r.id===selected);
+ // Published/staging papers stay in the admin library; hidden papers live in Archive.
+ const allRows=cloud.rows.filter(r=>r.kind==='papers');
+ const activeRows=allRows.filter(r=>r.data.status!=='公開停止');
+ const archivedRows=allRows.filter(r=>r.data.status==='公開停止');
+ const rows=section==='archive'?archivedRows:activeRows;
+ const row=allRows.find(r=>r.id===selected);
  const officialName=(schoolId?:string)=>cloud.schools.find(s=>s.id===schoolId)?.name||'';
  const displayName=(data:Paper)=>data.schoolNameOverride?.trim()||officialName(data.schoolId)||data.schoolName||'学校名未登録';
  const papers=rows.map(r=>({...r.data,id:Number(r.id),schoolName:displayName(r.data as Paper)}) as Paper);
@@ -43,9 +46,27 @@ export function AdminResearchLibrary({onOpen}:{onOpen:()=>void}){
    const data={...fresh.data.data,status:'公開停止'};
    const result=await supabase.rpc('lti_save_records',{ops:[{action:'update',kind:'papers',id:row.id,version:fresh.data.version,data}]});
    if(result.error)throw result.error;
-   setMessage('この論文を非公開にしました。一般の「みんなの論文」には表示されません。');
    await cloud.reload();
+   setSelected(null);setEditing(false);setInsight(false);setSection('archive');
+   setMessage('この論文を非公開にして、アーカイブへ移動しました。');
   }catch(e){setMessage(e instanceof Error?e.message:(e as {message?:string}).message||'非公開への変更に失敗しました。');}
+  finally{lock.current=false;setBusy(false);}
+ }
+ async function restore(){
+  if(lock.current||!row||cloud.profile.role!=='admin'||paper?.status!=='公開停止')return;
+  if(!window.confirm(`「${paper.title}」を公開中に戻しますか？一般の「みんなの論文」に再表示されます。`))return;
+  lock.current=true;setBusy(true);setMessage('');
+  try{
+   const fresh=await supabase.from('lti_records').select('data,version').eq('kind','papers').eq('id',row.id).single();
+   if(fresh.error)throw fresh.error;
+   if(fresh.data.data.status!=='公開停止')throw new Error('公開状況が別の操作で変更されています。画面を更新してください。');
+   const data={...fresh.data.data,status:'公開中'};
+   const result=await supabase.rpc('lti_save_records',{ops:[{action:'update',kind:'papers',id:row.id,version:fresh.data.version,data}]});
+   if(result.error)throw result.error;
+   await cloud.reload();
+   setSelected(null);setEditing(false);setInsight(false);setSection('library');
+   setMessage('アーカイブから公開中へ戻しました。「みんなの論文」に再表示されています。');
+  }catch(e){setMessage(e instanceof Error?e.message:(e as {message?:string}).message||'公開への復元に失敗しました。');}
   finally{lock.current=false;setBusy(false);}
  }
  async function save(){
@@ -69,12 +90,16 @@ export function AdminResearchLibrary({onOpen}:{onOpen:()=>void}){
  }
  if(cloud.profile.role!=='admin')return <p>この画面はLTI運営専用です。</p>;
  return <div className="space-y-5">
- <div className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900">LTI運営用：全学校の論文を公開状況にかかわらず閲覧できます。論文情報やAI参考情報はここから編集できます。公開中の論文は「非公開にする」で公開停止へ切り替えられます。公開中の論文は保存時に公開画面へ反映され、手動編集ではAIを再実行しません。</div>
+ <div className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900">LTI運営用：「みんなの論文」には公開中・承認待ちの論文だけを表示します。非公開にした論文は「アーカイブ」へ移動し、必要な場合は公開中へ戻せます。論文情報やAI参考情報の編集ではAIを再実行しません。</div>
+ <nav aria-label="論文管理" className="flex gap-2 rounded-2xl border bg-white p-2">
+  <button type="button" aria-current={section==='library'?'page':undefined} onClick={()=>{setSection('library');setSelected(null);setEditing(false);setInsight(false);setMessage('');}} className={`rounded-xl px-4 py-2 text-sm font-bold ${section==='library'?'bg-indigo-600 text-white':'text-slate-600 hover:bg-slate-50'}`}>みんなの論文 <span className="ml-1 opacity-75">{activeRows.length}</span></button>
+  <button type="button" aria-current={section==='archive'?'page':undefined} onClick={()=>{setSection('archive');setSelected(null);setEditing(false);setInsight(false);setMessage('');}} className={`rounded-xl px-4 py-2 text-sm font-bold ${section==='archive'?'bg-slate-800 text-white':'text-slate-600 hover:bg-slate-50'}`}>アーカイブ <span className="ml-1 opacity-75">{archivedRows.length}</span></button>
+ </nav>
  {message&&<p role="status" className="rounded-xl border p-4 whitespace-pre-wrap">{message}</p>}
- <div className={paper?'hidden':''}><ResearchLibrary papers={papers} includeUnpublished onOpen={p=>{setSelected(String(p.id));setEditing(false);setInsight(false);setMessage('');onOpen();}}/></div>
+ <div className={paper?'hidden':''}><ResearchLibrary papers={papers} includeUnpublished heading={section==='archive'?'アーカイブ':'みんなの論文ライブラリ'} description={section==='archive'?'非公開にした論文です。一般公開・運営の通常一覧には表示されません。':'公開中・承認待ちの論文を閲覧・検索できます。'} countLabel={section==='archive'?'アーカイブ論文':'論文'} emptyText={section==='archive'?'アーカイブされた論文はありません。':'表示できる論文はまだありません。'} onOpen={p=>{setSelected(String(p.id));setEditing(false);setInsight(false);setMessage('');onOpen();}}/></div>
  {selected&&!paper&&<p role="status">この論文は削除されたか、閲覧できなくなりました。</p>}
  {paper&&<>
- <div className="flex flex-wrap items-center gap-3"><span className="rounded-full border bg-white px-3 py-2 text-sm font-bold">公開状況：{paper.status}</span>{paper.status==='公開中'&&<button type="button" disabled={editing||busy||insight} onClick={()=>void unpublish()} className="rounded-xl bg-rose-600 px-4 py-3 text-white font-bold disabled:opacity-40">{busy?'変更中…':'非公開にする'}</button>}<button type="button" disabled={editing||busy||insight} onClick={beginEdit} className="rounded-xl bg-indigo-600 px-4 py-3 text-white disabled:opacity-40">タイトル・分野・学校名・著者名を編集</button><button type="button" disabled={editing||busy||insight} onClick={()=>setInsight(true)} className="rounded-xl bg-violet-600 px-4 py-3 text-white disabled:opacity-40">AIの要約・継続提案を編集</button>{paper.aiAnalysis&&!paper.aiAnalysis.evaluation&&<button type="button" disabled={editing||busy||insight} onClick={()=>void generateEvaluation()} className="rounded-xl border border-violet-300 bg-white px-4 py-3 text-violet-700 font-bold disabled:opacity-40">5観点評価を生成</button>}</div>
+ <div className="flex flex-wrap items-center gap-3"><span className="rounded-full border bg-white px-3 py-2 text-sm font-bold">公開状況：{paper.status}</span>{paper.status==='公開中'&&<button type="button" disabled={editing||busy||insight} onClick={()=>void unpublish()} className="rounded-xl bg-rose-600 px-4 py-3 text-white font-bold disabled:opacity-40">{busy?'変更中…':'非公開にする'}</button>}{paper.status==='公開停止'&&<button type="button" disabled={editing||busy||insight} onClick={()=>void restore()} className="rounded-xl bg-emerald-600 px-4 py-3 text-white font-bold disabled:opacity-40">{busy?'変更中…':'公開に戻す'}</button>}<button type="button" disabled={editing||busy||insight} onClick={beginEdit} className="rounded-xl bg-indigo-600 px-4 py-3 text-white disabled:opacity-40">タイトル・分野・学校名・著者名を編集</button><button type="button" disabled={editing||busy||insight} onClick={()=>setInsight(true)} className="rounded-xl bg-violet-600 px-4 py-3 text-white disabled:opacity-40">AIの要約・継続提案を編集</button>{paper.aiAnalysis&&!paper.aiAnalysis.evaluation&&<button type="button" disabled={editing||busy||insight} onClick={()=>void generateEvaluation()} className="rounded-xl border border-violet-300 bg-white px-4 py-3 text-violet-700 font-bold disabled:opacity-40">5観点評価を生成</button>}</div>
  {editing&&<section aria-label="論文情報の編集" className="rounded-2xl border bg-white p-5 space-y-4"><h2 className="font-bold text-lg">論文情報の編集</h2><p className="text-xs text-slate-500">学校名は表示用の名称です。所属学校IDや元のPDF、AI解析結果は変更しません。未公開の論文を編集しても自動公開はされません。</p><fieldset disabled={busy} className="grid sm:grid-cols-2 gap-4">{(['title','schoolName','author'] as const).map((key,i)=><label key={key} className="text-sm">{['タイトル','学校名','著者名'][i]}<input className={input} value={draft[key]} onChange={e=>setDraft(d=>({...d,[key]:e.target.value}))}/></label>)}<label className="text-sm">分野<select className={input} value={draft.field} onChange={e=>setDraft(d=>({...d,field:e.target.value}))}>{[...new Set([...RESEARCH_FIELDS,draft.field].filter(Boolean))].map(f=><option key={f}>{f}</option>)}</select></label></fieldset><div className="flex gap-3"><button type="button" disabled={busy} onClick={()=>void save()} className="rounded-xl bg-indigo-600 px-4 py-2 text-white disabled:opacity-40">{busy?'保存中…':'変更を保存'}</button><button type="button" disabled={busy} onClick={()=>setEditing(false)} className="rounded-xl border px-4 py-2">キャンセル</button></div></section>}
  <ResearchDetail paper={paper} showEvaluation trackView={false} onBack={()=>{if(busy||insight)return;if(editing&&!window.confirm('未保存の編集を破棄して一覧に戻りますか？'))return;setSelected(null);setEditing(false);setMessage('');}}/>
  {insight&&<InsightApproval key={paper.id} id={paper.id} onClose={()=>setInsight(false)} onSaved={async text=>{setMessage(text);await cloud.reload();}}/>}
