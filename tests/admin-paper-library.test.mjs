@@ -35,6 +35,13 @@ try{
  assert.match(adminSource,/非公開にする/);
  assert.match(adminSource,/一般の「みんなの論文」には表示されません/);
  assert.match(adminSource,/lti_save_records/);
+ const librarySource=readFileSync(new URL('../ResearchLibrary.tsx',import.meta.url),'utf8');
+ assert.match(librarySource,/mathematics\.svg/);
+ assert.match(librarySource,/medical\.svg/);
+ assert.match(librarySource,/other\.svg/);
+ assert.match(librarySource,/match:\/数学\//);
+ assert.match(librarySource,/match:\/医療\|健康\//);
+ assert.match(librarySource,/match:\/その他\//);
  const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
  assert.match(detailSource,/ResearchEvaluation/);
  assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
