@@ -11,6 +11,7 @@ try{
  await winner.finish({summary:['保存済み'],suggestions:[],classification:{field:'物理',reason:'力学の観測'}});
  assert.equal(row.data.field,'物理');assert.equal(row.data.bulkReviewed,false);assert.equal(row.data.status,'承認待ち');
  const again=await claimPaper('https://test',{},'1');assert.deepEqual(again.result.summary,['保存済み']);assert.equal(again.finish,undefined);
+ const refresh=await claimPaper('https://test',{},'1',true);assert.equal(refresh.result,undefined);await refresh.finish({summary:['保存済み'],suggestions:[],classification:{field:'物理',reason:'力学の観測'},evaluation:{items:Array.from({length:5},()=>({score:3,reason:'理由',evidence:'本文',nextStep:'次'}))}});const refreshed=await claimPaper('https://test',{},'1',true);assert.equal(refreshed.result.evaluation.items.length,5);
  row={data:{id:2,status:'下書き'},version:1};await assert.rejects(()=>claimPaper('https://test',{},'2'));
- console.log('PASS: one claim under concurrency, interrupted claim lock, saved result reuse, submitted paper required');
+ console.log('PASS: one claim under concurrency, interrupted claim lock, saved result reuse, evaluation backfill, submitted paper required');
 }finally{await rm(dir,{recursive:true,force:true});}
