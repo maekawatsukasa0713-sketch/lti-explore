@@ -42,6 +42,8 @@ try{
  assert.match(librarySource,/match:\/数学\//);
  assert.match(librarySource,/match:\/医療\|健康\//);
  assert.match(librarySource,/match:\/その他\//);
+ assert.doesNotMatch(librarySource,/AI生成イメージ/);
+ assert.doesNotMatch(librarySource,/AI生成・実際の研究写真ではありません/);
  const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
  assert.match(detailSource,/ResearchEvaluation/);
  assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
