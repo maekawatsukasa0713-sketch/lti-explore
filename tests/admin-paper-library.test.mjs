@@ -58,6 +58,9 @@ try{
  assert.match(librarySource,/emptyText/);
  const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
  assert.match(detailSource,/ResearchEvaluation/);
+ const evaluationSource=readFileSync(new URL('../ResearchEvaluation.tsx',import.meta.url),'utf8');
+ assert.match(evaluationSource,/着眼点・独創性/);
+ assert.match(evaluationSource,/高校生ならではの柔軟な発想/);
  assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
  assert.match(librarySource,/loadPaperEngagement/);
  assert.match(librarySource,/bookmarksOnly/);
