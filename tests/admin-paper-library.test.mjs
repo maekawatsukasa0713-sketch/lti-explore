@@ -27,6 +27,8 @@ try{
  assert.match(adminSource,/schoolNameOverride:/);
  assert.match(adminSource,/version,data/);
  assert.match(adminSource,/showEvaluation/);
+ assert.match(adminSource,/5観点評価を生成/);
+ assert.match(adminSource,/prepareResearch/);
  const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
  assert.match(detailSource,/ResearchEvaluation/);
  assert.match(detailSource,/showEvaluation&&result\?\.evaluation/);
