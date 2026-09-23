@@ -72,10 +72,10 @@ Deno.serve(async(req:Request)=>{
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([user.id,model,body.mode,title,basis,text,pdf])));const cacheKey=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');const now=Date.now();
   for(const [k,v] of cache)if(now-v.time>3600000)cache.delete(k);
   const hit=cache.get(cacheKey);if(body.mode==='review'&&hit&&body.force!==true)return reply(hit.value);
-  const quota=await fetch(base+'/rest/v1/rpc/lti_consume_ai_quota',{method:'POST',headers:{...authHeaders,'content-type':'application/json'},body:JSON.stringify({request_mode:body.mode}),signal:AbortSignal.timeout(8000)});
-  if(!quota.ok)return reply({error:'利用回数を確認できませんでした。時間をおいて再試行してください。'},503);
-  if(await quota.json()!==true)return reply({error:'AI解析の利用上限に達しました。時間をおいてから解析してください。'},429);
   if(body.mode==='register'){if(typeof body.paperId!=='string'||body.paperId.length>100)return reply({error:'研究成果IDを確認してください。'},400);registration=await claimPaper(base,authHeaders,body.paperId);if(registration.result)return reply(registration.result);}
+  const quota=await fetch(base+'/rest/v1/rpc/lti_consume_ai_quota',{method:'POST',headers:{...authHeaders,'content-type':'application/json'},body:JSON.stringify({request_mode:body.mode}),signal:AbortSignal.timeout(8000)});
+  if(!quota.ok){if(registration?.fail)await registration.fail('quota_check_failed');return reply({error:'利用回数を確認できませんでした。時間をおいて再試行してください。'},503);}
+  if(await quota.json()!==true){if(registration?.fail)await registration.fail('quota');return reply({error:'AI解析の利用上限に達しました。時間をおいてから解析してください。'},429);}
   if(body.mode==='register'){
    const background=async()=>{
     let backgroundStage='anthropic';
