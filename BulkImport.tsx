@@ -1,3 +1,4 @@
+import {AIActivity} from './AIActivity';
 import {useEffect,useRef,useState} from 'react';
 import {useCloud,uploadPdf,PdfView,supabase} from './cloud';
 import {prepareResearch} from './publish-research';
@@ -8,6 +9,7 @@ const input='block w-full border border-slate-200 rounded-lg p-2 mt-1 bg-white t
 const button='rounded-lg border px-4 py-2 text-sm disabled:opacity-40';
 const canAnalyze=(data:any)=>!data.aiAnalysis&&(!data.aiState||data.aiState.state==='failed')&&!data.aiInputError;
 export function BulkImport(){
+ const [analyzing,setAnalyzing]=useState(false);
  const cloud=useCloud();const [items,setItems]=useState<Item[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [page,setPage]=useState(1),[query,setQuery]=useState(''),[queueLimit,setQueueLimit]=useState(30);
  const [school,setSchool]=useState(''),[field,setField]=useState('物理'),[mode,setMode]=useState('manual'),[ai,setAi]=useState(true),[filter,setFilter]=useState('すべて');
@@ -23,8 +25,8 @@ export function BulkImport(){
  if(next.some(d=>d.hash===hash)||cloud.rows.some(r=>r.kind==='papers'&&r.data.sourceHash===hash)){skipped++;continue;}
  next.push({id:parseInt(hash.slice(0,13),16),hash,file,title:file.name.replace(/\.[^.]+$/,''),message:'未登録'});}
  setItems(next);setMessage(`${next.length}件を選択しました。${skipped?`${skipped}件は重複・形式・サイズ・件数上限により除外しました。`:''}`);});}
- async function analyze(ids:number[]){let done=0,skipped=0;for(const id of ids){if(stop.current)break;setMessage(`AI解析中：${done+skipped+1} / ${ids.length}件。完了までこの画面を開いてください。`);try{await prepareResearch(id);done++;}catch(e){if((e as {inputError?:boolean}).inputError){skipped++;continue;}setMessage(`${done}件のAI解析を保存しました。${skipped}件は本文抽出に失敗しました。処理を停止：${(e as Error).message} 未解析・失敗分は一覧から再解析できます。`);return;}}
- setMessage(`${done}件のAI分類・要約・継続提案を保存しました。${skipped}件は本文抽出に失敗しました。結果を確認してから公開してください。${stop.current?'残りの処理は停止しました。':''}`);}
+ async function analyze(ids:number[]){setAnalyzing(true);try{let done=0,skipped=0;for(const id of ids){if(stop.current)break;setMessage(`AI解析中：${done+skipped+1} / ${ids.length}件。完了までこの画面を開いてください。`);try{await prepareResearch(id);done++;}catch(e){if((e as {inputError?:boolean}).inputError){skipped++;continue;}setMessage(`${done}件のAI解析を保存しました。${skipped}件は本文抽出に失敗しました。処理を停止：${(e as Error).message} 未解析・失敗分は一覧から再解析できます。`);return;}}
+ setMessage(`${done}件のAI分類・要約・継続提案を保存しました。${skipped}件は本文抽出に失敗しました。結果を確認してから公開してください。${stop.current?'残りの処理は停止しました。':''}`);}finally{setAnalyzing(false);}}
  async function register(){await run(async()=>{
  const assurance=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
  if(assurance.error)throw assurance.error;
@@ -50,6 +52,7 @@ export function BulkImport(){
  <input aria-label="論文ファイルを複数選択" type="file" multiple accept=".pdf,.docx" onChange={e=>{void add(e.target.files);e.target.value='';}}/>
  {items.length>0&&<div className="space-y-2">{items.slice(0,queueLimit).map(d=><div key={d.id} className="border rounded-lg p-3"><p className="text-xs text-slate-500 break-all">{d.file.name}（{(d.file.size/1024/1024).toFixed(1)}MB）— {d.message}</p><label className="text-xs">タイトル<input className={input} value={d.title} disabled={d.saved} onChange={e=>patch(d.id,{title:e.target.value})}/></label>{!d.saved&&<button className="text-xs underline mt-2" onClick={()=>setItems(old=>old.filter(x=>x.id!==d.id))}>除外</button>}</div>)}</div>}
  <p className="text-sm font-semibold">選択 {items.length}件・合計 {(items.reduce((sum,d)=>sum+d.file.size,0)/1024/1024/1024).toFixed(2)}GB・保存済み {items.filter(d=>d.saved).length}件</p>{items.length>queueLimit&&<button className={button} onClick={()=>setQueueLimit(n=>n+30)}>選択ファイルをさらに30件表示</button>}<div className="flex gap-3"><button className={button+' bg-indigo-600 text-white'} disabled={!items.some(d=>!d.saved)} onClick={()=>void register()}>一括登録して確認へ</button><button className={button} onClick={()=>setItems(old=>old.filter(d=>!d.saved))}>登録済みを選択欄から外す</button></div></fieldset>
+ {analyzing&&<AIActivity/>}
  <p role="status" className="text-sm bg-indigo-50 rounded-xl p-4 whitespace-pre-wrap">{message||'登録した論文は、原稿とAI結果を確認して公開するまで非公開です。'}</p>{busy&&<button className={button} onClick={()=>{stop.current=true;setMessage('現在の1件が終わったら停止します。');}}>残りの処理を停止</button>}
  <div className="space-y-4"><h2 className="font-bold text-lg">2. 登録済みの論文を確認・編集（{pending.length}件）</h2><p className="text-sm text-slate-500">解析に失敗した論文も一覧に残り、再解析できます。AI結果が到着したらもう一度内容を確認して保存してください。</p>
  <div className="flex flex-wrap items-center gap-3"><input aria-label="登録論文を検索" placeholder="タイトル・学校名・著者で検索" className={input+' max-w-sm'} value={query} onChange={e=>{setQuery(e.target.value);setPage(1);setSelected({});}}/><label className="text-sm">分野で表示<select className={input} value={filter} disabled={busy} onChange={e=>{setFilter(e.target.value);setPage(1);setSelected({});}}>{['すべて',...new Set(pending.map(r=>r.data.field||'未分類'))].map(f=><option key={f}>{f}</option>)}</select></label>
