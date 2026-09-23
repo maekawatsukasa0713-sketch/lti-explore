@@ -46,6 +46,29 @@ Deno.serve(async(req:Request)=>{
   if(!quota.ok)return reply({error:'利用回数を確認できませんでした。時間をおいて再試行してください。'},503);
   if(await quota.json()!==true)return reply({error:'AI解析の利用上限に達しました。時間をおいてから解析してください。'},429);
   if(body.mode==='register'){if(typeof body.paperId!=='string'||body.paperId.length>100)return reply({error:'研究成果IDを確認してください。'},400);registration=await claimPaper(base,authHeaders,body.paperId);if(registration.result)return reply(registration.result);}
+  if(body.mode==='register'){
+   const background=async()=>{
+    let backgroundStage='anthropic';
+    try{
+       const content:any[]=[];if(pdf)content.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:pdf}});
+       content.push({type:'text',text:JSON.stringify({task:body.mode==='review'?'研究添削':'研究要約と継続研究提案。本文の主な研究対象から主分野を1つ分類し、日本語で短い根拠を記載する。分野不明は未分類。',title,basis,untrusted_document:text||'添付PDF'})});
+       backgroundStage='anthropic';const aiStartedAt=Date.now();console.log('Claude request started',{mode:body.mode,hasPdf:!!pdf,inputChars:text.length});
+       const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model,max_tokens:7000,system:system+'\n'+continuationGuidance+(body.mode==='register'?'\n'+publicationGuidance:''),messages:[{role:'user',content}],tools:[{name:'submit_analysis',description:'研究の要約、提案、添削結果を構造化して返す',input_schema:body.mode==='register'?registrationSchema:schema}],tool_choice:{type:'tool',name:'submit_analysis'}}),signal:AbortSignal.timeout(130000)});
+       console.log('Claude request finished',{mode:body.mode,status:response.status,durationMs:Date.now()-aiStartedAt});
+       if(!response.ok){const message=response.status===429?'AIの利用上限に達しました。時間をおいて再試行してください。':response.status===401?'AI接続キーを確認してください。':response.status===402?'Claude APIの利用残高または支払い設定を確認してください。':response.status===400?'AIが原稿を読み取れません。PDFのページ数・暗号化やモデル設定を確認してください。':'AI提供元に接続できませんでした。';if(registration?.fail)await registration.fail('anthropic_'+response.status);return reply({error:message},response.status===429?429:502);}
+       const payload=await response.json();const result=payload.content?.find((c:any)=>c.type==='tool_use'&&c.name==='submit_analysis')?.input;
+       if(payload.stop_reason==='max_tokens'||!validResult(result)||(body.mode==='register'&&(!fields.includes(result.classification?.field)||typeof result.classification?.reason!=='string'||result.classification.reason.length>500))){const reason=payload.stop_reason==='max_tokens'?'max_tokens':'invalid_response';console.error('AI structured response incomplete',{reason,stop_reason:payload.stop_reason,output_tokens:payload.usage?.output_tokens});if(registration?.fail)await registration.fail(reason);return reply({error:reason==='max_tokens'?'AIの出力が長くなり、回答が途中で切れました。再解析してください。':'AIの回答が不完全です。再解析してください。'},502);}
+       const value={...result,basis,generatedAt:new Date().toISOString()};backgroundStage='save';if(registration?.finish)await registration.finish(value);if(cache.size>=30)cache.delete(cache.keys().next().value!);cache.set(cacheKey,{time:now,value});return reply(value);
+    }catch(e){
+     const timedOut=backgroundStage==='anthropic'&&e instanceof Error&&['TimeoutError','AbortError'].includes(e.name);
+     const reason=timedOut?'anthropic_timeout':'request_failed';
+     console.error('Research AI background task failed',{stage:backgroundStage,reason,name:e instanceof Error?e.name:'unknown',message:e instanceof Error?e.message:'unknown'});
+     if(registration?.fail)try{await registration.fail(reason);}catch{}
+    }
+   };
+   EdgeRuntime.waitUntil(background());
+   return reply({accepted:true,state:'processing'},202);
+  }
   const content:any[]=[];if(pdf)content.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:pdf}});
   content.push({type:'text',text:JSON.stringify({task:body.mode==='review'?'研究添削':'研究要約と継続研究提案。本文の主な研究対象から主分野を1つ分類し、日本語で短い根拠を記載する。分野不明は未分類。',title,basis,untrusted_document:text||'添付PDF'})});
   stage='anthropic';const aiStartedAt=Date.now();console.log('Claude request started',{mode:body.mode,hasPdf:!!pdf,inputChars:text.length});
