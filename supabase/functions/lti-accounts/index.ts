@@ -2,11 +2,16 @@ import { createClient } from 'npm:@supabase/supabase-js@2.115.0';
 const url=Deno.env.get('SUPABASE_URL')!;
 const service=createClient(url,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false}});
 const headers={'Access-Control-Allow-Origin':'https://lti-explore-lab-to-impact.vercel.app','Vary':'Origin','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info','Access-Control-Allow-Methods':'POST, OPTIONS','Cache-Control':'no-store','Content-Type':'application/json'};
-const respond=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers});
+
 const password=()=>{const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';let value='';while(value.length<10){const bytes=crypto.getRandomValues(new Uint8Array(20));for(const b of bytes){if(b<256-256%alphabet.length)value+=alphabet[b%alphabet.length];if(value.length===10)break;}}return value;};
 async function loginEmail(school:string,id:string){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`${school.toLowerCase()}\0${id.toLowerCase()}`));return Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('')+'@accounts.lti.invalid';}
+const allowedOrigins=new Set(['https://lti-explore-lab-to-impact.vercel.app','https://lti-explore-six.vercel.app','https://lti-explore.vercel.app']);
 Deno.serve(async req=>{
- if(req.method==='OPTIONS')return new Response('ok',{headers});
+ const origin=req.headers.get('Origin')||'';
+ const requestHeaders={...headers,'Access-Control-Allow-Origin':allowedOrigins.has(origin)?origin:'https://lti-explore-lab-to-impact.vercel.app'};
+ const respond=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:requestHeaders});
+ if(origin&&!allowedOrigins.has(origin))return respond({error:'このURLからは利用できません。LTIの本番画面を開いてください。'},403);
+ if(req.method==='OPTIONS')return new Response('ok',{headers:requestHeaders});
  if(req.method!=='POST')return respond({error:'Method not allowed'},405);
  if(Number(req.headers.get('content-length')||0)>10000)return respond({error:'Request too large'},413);
  const bearer=req.headers.get('Authorization')||'';const jwt=bearer.replace(/^Bearer\s+/i,'');
@@ -81,6 +86,7 @@ Deno.serve(async req=>{
   if(body.action==='reset-password'){
    const target=await service.from('lti_profiles').select('*').eq('id',String(body.userId||'')).single();
    if(target.error||!target.data?.login_id||target.data.role==='admin')return respond({error:'学校用の生徒・教員アカウントを選択してください'},400);
+   if(!target.data.active||target.data.deleted_at)return respond({error:'利用停止中のアカウントです。利用状態を確認してください。'},400);
    if(target.data.id===user.id)return respond({error:'自分のパスワードは本人用の変更画面を使用してください'},400);
    const initialPassword=password();const expiresAt=new Date(Date.now()+7*86400000).toISOString();
    const block=await service.from('lti_profiles').update({must_change_password:true,initial_password_expires_at:expiresAt,session_valid_after:new Date().toISOString()}).eq('id',target.data.id);if(block.error)throw block.error;
