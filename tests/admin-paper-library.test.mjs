@@ -50,6 +50,8 @@ try{
  assert.match(detailSource,/ResearchEvaluation/);
  assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
  assert.match(librarySource,/loadPaperEngagement/);
+ assert.match(librarySource,/bookmarksOnly/);
+ assert.match(librarySource,/ブックマーク/);
  assert.match(librarySource,/engagement\.views/);
  assert.match(librarySource,/engagement\.bookmarks/);
  assert.match(librarySource,/engagement\.citations/);
