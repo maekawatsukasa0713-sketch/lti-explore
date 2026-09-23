@@ -23,7 +23,10 @@ try{
  assert.match(adminHtml,/承認待ち/);
  assert.match(adminHtml,/公開停止/);
  const adminSource=readFileSync(new URL('../AdminResearchLibrary.tsx',import.meta.url),'utf8');
- assert.match(adminSource,/const rows=cloud\.rows\.filter\(r=>r\.kind==='papers'\)/);
+ assert.match(adminSource,/const allRows=cloud\.rows\.filter\(r=>r\.kind==='papers'\)/);
+ assert.match(adminSource,/activeRows=allRows\.filter\(r=>r\.data\.status!=='公開停止'\)/);
+ assert.match(adminSource,/archivedRows=allRows\.filter\(r=>r\.data\.status==='公開停止'\)/);
+ assert.match(adminSource,/section==='archive'\?archivedRows:activeRows/);
  assert.match(adminSource,/schoolNameOverride:/);
  assert.match(adminSource,/version,data/);
  assert.match(adminSource,/showEvaluation/);
@@ -33,7 +36,11 @@ try{
  assert.match(adminSource,/paper\?\.status!=='公開中'/);
  assert.match(adminSource,/status:'公開停止'/);
  assert.match(adminSource,/非公開にする/);
- assert.match(adminSource,/一般の「みんなの論文」には表示されません/);
+ assert.match(adminSource,/アーカイブへ移動しました/);
+ assert.match(adminSource,/async function restore\(\)/);
+ assert.match(adminSource,/status:'公開中'/);
+ assert.match(adminSource,/公開に戻す/);
+ assert.match(adminSource,/アーカイブ/);
  assert.match(adminSource,/lti_save_records/);
  const librarySource=readFileSync(new URL('../ResearchLibrary.tsx',import.meta.url),'utf8');
  assert.match(librarySource,/mathematics\.svg/);
@@ -46,6 +53,9 @@ try{
  assert.doesNotMatch(librarySource,/AI生成・実際の研究写真ではありません/);
  assert.match(librarySource,/md:grid-cols-2 xl:grid-cols-3/);
  assert.match(librarySource,/gap-4/);
+ assert.match(librarySource,/heading='みんなの論文ライブラリ'/);
+ assert.match(librarySource,/countLabel/);
+ assert.match(librarySource,/emptyText/);
  const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
  assert.match(detailSource,/ResearchEvaluation/);
  assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
@@ -73,5 +83,5 @@ try{
  const cloudSource=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
  assert.match(cloudSource,/https:\/\/lti-explore-six\.vercel\.app\/\?flow=recovery/);
  assert.doesNotMatch(cloudSource,/lti-explore-lab-to-impact\.vercel\.app\/\?flow=recovery/);
- console.log('PASS: admin can browse all statuses; public library only shows published papers and honors school-name overrides');
+ console.log('PASS: admin library separates hidden papers into archive; public library only shows published papers');
 }finally{unlinkSync(path);}
