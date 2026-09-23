@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {mkdtemp,rm} from 'node:fs/promises';
+import path from 'node:path';
+const dir=await mkdtemp(path.resolve('.review-recovery-'));
+try{
+ for(const [src,name] of [['review-runner.ts','runner'],['supabase/functions/research-ai/review.ts','review'],['supabase/functions/research-ai/index.ts','edge']])await build({entryPoints:[src],outfile:path.join(dir,name+'.mjs'),bundle:true,format:'esm',platform:'node'});
+ const {runReview}=await import(path.join(dir,'runner.mjs'));const {generateReview,reviewSchema}=await import(path.join(dir,'review.mjs'));
+ const valid={corrections:['本文の根拠と改善方法'],advice:['助言'],nextExperiments:['公開データの比較']};
+ let reqs=[];globalThis.fetch=async(url,init)=>{reqs.push(JSON.parse(init.body));return Response.json({stop_reason:'tool_use',content:[{type:'tool_use',name:'submit_review',input:valid}]});};
+ assert.deepEqual(await generateReview({key:'test',model:'same-model',content:[{type:'text',text:'manuscript'}]}),valid);
+ assert.deepEqual(Object.keys(reviewSchema().properties),['corrections','advice','nextExperiments']);assert.equal(reqs[0].tools[0].strict,true);assert.equal(reqs[0].model,'same-model');
+ globalThis.fetch=async()=>Response.json({stop_reason:'max_tokens',content:[{type:'tool_use',name:'submit_review',input:valid}]});
+ await assert.rejects(()=>generateReview({key:'test',model:'same-model',content:[]}),e=>e.code==='review_max_tokens'&&e.retryable);
+ globalThis.fetch=async()=>{throw new DOMException('timeout','TimeoutError');};await assert.rejects(()=>generateReview({key:'test',model:'same-model',content:[]}),e=>e.code==='review_timeout'&&e.retryable);
+ globalThis.fetch=async()=>Response.json({stop_reason:'tool_use',content:[{type:'tool_use',name:'submit_review',input:{corrections:'bad'}}]});await assert.rejects(()=>generateReview({key:'test',model:'same-model',content:[],section:'corrections'}),e=>e.code==='review_invalid');
+ const file={},scope='teacher-a';let prepared=0,failed=false,calls=[],partials=[];
+ const prepare=async()=>{prepared++;return {text:'full unchanged manuscript',basis:'PDF'};};
+ const invoke=async(input,section)=>{assert.equal(input.text,'full unchanged manuscript');calls.push(section||'all');if(!section)throw Object.assign(new Error('truncated'),{retryable:true});if(section==='advice'&&!failed){failed=true;throw new Error('network');}return valid;};
+ await assert.rejects(()=>runReview(file,scope,prepare,invoke,(_,p)=>{if(p)partials.push({...p});}),/network/);
+ const result=await runReview(file,scope,prepare,invoke,()=>{});assert.deepEqual(calls,['all','corrections','advice','advice','nextExperiments']);assert.equal(prepared,1);assert.deepEqual(result.corrections,valid.corrections);assert.ok(partials.some(p=>p.corrections));
+ await runReview(file,scope,prepare,invoke,()=>{});assert.equal(calls.length,5,'completed response reused');
+ let resolve;const blocking=new Promise(r=>resolve=r);let duplicates=0;const fresh={};const first=runReview(fresh,scope,prepare,async()=>{duplicates++;await blocking;return valid;},()=>{});const second=runReview(fresh,scope,prepare,async()=>{duplicates++;return valid;},()=>{});resolve();await Promise.all([first,second]);assert.equal(duplicates,1);
+ let deniedCalls=0;await assert.rejects(()=>runReview({},scope,prepare,async()=>{deniedCalls++;throw Object.assign(new Error('denied'),{retryable:false});},()=>{}),/denied/);assert.equal(deniedCalls,1);
+ let handler,refund=0,providerCalls=0;globalThis.Deno={env:{get:k=>k==='SUPABASE_URL'?'https://db':k==='ANTHROPIC_API_KEY'?'test':'anon'},serve:fn=>handler=fn};
+ await import(path.join(dir,'edge.mjs'));
+ globalThis.fetch=async(url,init={})=>{url=String(url);if(url.includes('/auth/v1/user'))return Response.json({id:'teacher'});if(url.includes('lti_profiles'))return Response.json([{role:'teacher',active:true}]);if(url.includes('lti_feature_enabled'))return Response.json(true);if(url.includes('lti_claim_ai_quota'))return Response.json(42);if(url.includes('lti_refund_ai_quota')){refund++;return Response.json(true);}if(url.includes('anthropic.com')){providerCalls++;return Response.json({stop_reason:'max_tokens',content:[]});}throw new Error(url);};
+ const request=()=>new Request('https://edge',{method:'POST',headers:{Authorization:'Bearer test',Origin:'https://lti-explore-six.vercel.app'},body:JSON.stringify({mode:'review',text:'文献の比較を扱う高校生の研究。'.repeat(5)})});
+ const response=await handler(request());assert.equal(response.status,502);assert.equal((await response.json()).code,'review_max_tokens');assert.equal(refund,1);assert.equal(providerCalls,1);
+ console.log('PASS: review-only strict schema, intact manuscript, truncation and timeout fallback, partial resume, duplicate prevention, access failures, quota refund');
+}finally{await rm(dir,{recursive:true,force:true});}
