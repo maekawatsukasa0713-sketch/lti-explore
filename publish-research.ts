@@ -22,7 +22,7 @@ export async function prepareResearch(id:number){
   await new Promise(resolve=>window.setTimeout(resolve,2000));
   const current=await readResearch(id);
   if(current.data.aiAnalysis&&(!needsEvaluation||current.data.aiAnalysis.evaluation))return current.data.aiAnalysis as ResearchAnalysis;
-  if(current.data.aiState?.state==='failed')throw new Error(`AI解析に失敗しました（${current.data.aiState.reason||'原因不明'}）。保存済みの原稿から再解析できます。`);
+  if(current.data.aiState?.state==='failed'){const reason=current.data.aiState.reason||'原因不明';if(reason==='quota')throw new Error('AI解析の利用上限に達しました。時間をおいてから解析してください。');throw new Error(`AI解析に失敗しました（${reason}）。保存済みの原稿から再解析できます。`);}
   if(current.data.aiState?.state==='processing'&&Date.now()-Date.parse(current.data.aiState.startedAt||'')>165000){
    const stale={...current.data,aiState:{...current.data.aiState,state:'failed',reason:'worker_timeout',failedAt:new Date().toISOString()}};
    const {error}=await supabase.rpc('lti_save_records',{ops:[{action:'update',kind:'papers',id:String(id),version:current.version,data:stale}]});
