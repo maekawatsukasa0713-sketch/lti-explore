@@ -2,6 +2,7 @@ import {AIActivity} from './AIActivity';
 import {useEffect,useRef,useState} from 'react';
 import {useCloud,uploadPdf,PdfView,supabase} from './cloud';
 import {prepareResearch} from './publish-research';
+import {runResearchBatch} from './research-batch';
 import {RESEARCH_FIELDS,publicationOps} from './research-fields';
 
 type Item={id:number;hash:string;file:File;title:string;path?:string;saved?:boolean;message:string};
@@ -29,25 +30,11 @@ export function BulkImport(){
  async function analyze(ids:number[]){
   setAnalyzing(true);
   try{
-   let done=0,skipped=0,failed=0,consecutiveFailures=0;
-   for(const id of ids){
-    if(stop.current)break;
-    setMessage(`AI解析を受付中：${done+skipped+failed+1} / ${ids.length}件。画面を閉じてもサーバーで処理が続きます。`);
-    try{
-     await prepareResearch(id);done++;consecutiveFailures=0;
-    }catch(e){
-     if((e as {inputError?:boolean}).inputError){skipped++;continue;}
-     const reason=(e as Error).message||'AI解析に失敗しました。';
-     if(reason.includes('利用上限')){
-      setMessage(`${done}件のAI解析を保存しました。${skipped}件は本文抽出に失敗しました。${failed}件はAI解析に失敗しました。処理を停止：${reason} 未解析・失敗分は一覧から再解析できます。`);return;
-     }
-     failed++;consecutiveFailures++;
-     if(consecutiveFailures>=3){
-      setMessage(`${done}件のAI解析を保存しました。${skipped}件は本文抽出に失敗しました。${failed}件はAI解析に失敗しました。AI提供元の障害拡大を避けるため、連続3件の失敗で停止しました。未解析・失敗分は一覧から再解析できます。`);return;
-     }
-    }
-   }
-   setMessage(`${done}件のAI分類・要約・継続提案を保存しました。${skipped}件は本文抽出に失敗しました。${failed?`${failed}件はAI解析に失敗しました。失敗分は一覧から再解析できます。`:''}結果を確認してから公開してください。${stop.current?'残りの処理は停止しました。':''}`);
+   const result=await runResearchBatch(ids,prepareResearch,()=>stop.current,p=>{
+    const waiting=p.total-p.started;
+    setMessage(`AI解析（最大3件同時）：保存済み ${p.saved}件 / ${p.total}件・処理中 ${p.active}件・待機中 ${waiting}件。本文抽出失敗 ${p.inputFailed}件・解析失敗 ${p.failed}件。${p.stopReason||stop.current?'新しい解析の受付を停止し、処理中の結果を待っています。':'待機中の論文を続けて解析する間は、この画面を開いたままにしてください。'}`);
+   });
+   setMessage(`${result.saved}件のAI分類・要約・継続提案を保存しました。${result.inputFailed}件は本文抽出に失敗しました。${result.failed}件はAI解析に失敗しました。${result.stopReason?`処理を停止：${result.stopReason} 未開始 ${result.total-result.started}件。`:''}${result.failed||result.stopReason?'未解析・失敗分は一覧から再解析できます。':''}結果を確認してから公開してください。`);
   }finally{setAnalyzing(false);}
  }
  async function register(){await run(async()=>{
@@ -76,7 +63,7 @@ export function BulkImport(){
  {items.length>0&&<div className="space-y-2">{items.slice(0,queueLimit).map(d=><div key={d.id} className="border rounded-lg p-3"><p className="text-xs text-slate-500 break-all">{d.file.name}（{(d.file.size/1024/1024).toFixed(1)}MB）— {d.message}</p><label className="text-xs">タイトル<input className={input} value={d.title} disabled={d.saved} onChange={e=>patch(d.id,{title:e.target.value})}/></label>{!d.saved&&<button className="text-xs underline mt-2" onClick={()=>setItems(old=>old.filter(x=>x.id!==d.id))}>除外</button>}</div>)}</div>}
  <p className="text-sm font-semibold">選択 {items.length}件・合計 {(items.reduce((sum,d)=>sum+d.file.size,0)/1024/1024/1024).toFixed(2)}GB・保存済み {items.filter(d=>d.saved).length}件</p>{items.length>queueLimit&&<button className={button} onClick={()=>setQueueLimit(n=>n+30)}>選択ファイルをさらに30件表示</button>}<div className="flex gap-3"><button className={button+' bg-indigo-600 text-white'} disabled={!items.some(d=>!d.saved)} onClick={()=>void register()}>一括登録して確認へ</button><button className={button} onClick={()=>setItems(old=>old.filter(d=>!d.saved))}>登録済みを選択欄から外す</button></div></fieldset>
  {analyzing&&<AIActivity/>}
- <p role="status" className="text-sm bg-indigo-50 rounded-xl p-4 whitespace-pre-wrap">{message||'登録した論文は、原稿とAI結果を確認して公開するまで非公開です。'}</p>{busy&&<button className={button} onClick={()=>{stop.current=true;setMessage('現在の1件が終わったら停止します。');}}>残りの処理を停止</button>}
+ <p role="status" className="text-sm bg-indigo-50 rounded-xl p-4 whitespace-pre-wrap">{message||'登録した論文は、原稿とAI結果を確認して公開するまで非公開です。'}</p>{busy&&<button className={button} onClick={()=>{stop.current=true;setMessage('新しい処理を停止しました。処理中の分が終わるまでお待ちください。');}}>残りの処理を停止</button>}
  <div className="space-y-4"><h2 className="font-bold text-lg">2. 登録済みの論文を確認・編集（{pending.length}件）</h2><p className="text-sm text-slate-500">解析に失敗した論文も一覧に残り、再解析できます。AI結果が到着したらもう一度内容を確認して保存してください。</p><p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">AI解析済みで、タイトル・分野・原稿が揃っていれば一括公開のチェックを入れられます。チェックして公開すると、その操作を内容確認済みとして保存します。内容を編集した場合だけ、先に「確認済みとして保存」を押してください。</p>
  <div className="flex flex-wrap items-center gap-3"><input aria-label="登録論文を検索" placeholder="タイトル・学校名・著者で検索" className={input+' max-w-sm'} value={query} onChange={e=>{setQuery(e.target.value);setPage(1);setSelected({});}}/><label className="text-sm">分野で表示<select className={input} value={filter} disabled={busy} onChange={e=>{setFilter(e.target.value);setPage(1);setSelected({});}}>{['すべて',...new Set(pending.map(r=>r.data.field||'未分類'))].map(f=><option key={f}>{f}</option>)}</select></label>
  <button disabled={busy||!visible.some(r=>canAnalyze(r.data))} className={button} onClick={()=>void run(()=>analyze(visible.filter(r=>canAnalyze(r.data)).slice(0,1000).map(r=>Number(r.id))))}>未解析・失敗・五角形未生成分をAI解析（{visible.filter(r=>canAnalyze(r.data)).length}件）</button>
