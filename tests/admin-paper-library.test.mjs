@@ -29,6 +29,12 @@ try{
  assert.match(adminSource,/showEvaluation/);
  assert.match(adminSource,/5観点評価を生成/);
  assert.match(adminSource,/prepareResearch/);
+ assert.match(adminSource,/async function unpublish\(\)/);
+ assert.match(adminSource,/paper\?\.status!=='公開中'/);
+ assert.match(adminSource,/status:'公開停止'/);
+ assert.match(adminSource,/非公開にする/);
+ assert.match(adminSource,/一般の「みんなの論文」には表示されません/);
+ assert.match(adminSource,/lti_save_records/);
  const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
  assert.match(detailSource,/ResearchEvaluation/);
  assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
