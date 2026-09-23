@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="医療・健康の共通イメージ">
+<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#ecfeff"/><stop offset="1" stop-color="#0f766e"/></linearGradient></defs>
+<rect width="160" height="160" rx="20" fill="url(#g)"/><circle cx="122" cy="38" r="25" fill="#ccfbf1" opacity=".5"/>
+<path d="M18 84h24l9-25 16 51 13-38 9 12h53" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M50 40c0-12 16-18 25-7l5 6 5-6c9-11 25-5 25 7 0 20-30 39-30 39S50 60 50 40z" fill="#fb7185" opacity=".95"/>
+<circle cx="80" cy="106" r="25" fill="none" stroke="#134e4a" stroke-width="4"/><path d="M80 92v28M66 106h28" stroke="#134e4a" stroke-width="5" stroke-linecap="round"/>
+</svg>
