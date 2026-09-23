@@ -53,7 +53,7 @@ try{
  assert.doesNotMatch(librarySource,/AI生成・実際の研究写真ではありません/);
  assert.match(librarySource,/md:grid-cols-2 xl:grid-cols-3/);
  assert.match(librarySource,/gap-4/);
- assert.match(librarySource,/useState\(includeUnpublished\?'new':'random'\)/);
+ assert.match(librarySource,/useState\('random'\)/);
  assert.match(librarySource,/sort==='random'/);
  assert.match(librarySource,/<option value="random">ランダム<\/option>/);
  assert.match(librarySource,/Math\.random\(\)/);
