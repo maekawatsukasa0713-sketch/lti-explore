@@ -49,5 +49,24 @@ try{
  const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
  assert.match(detailSource,/ResearchEvaluation/);
  assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
+ assert.match(librarySource,/loadPaperEngagement/);
+ assert.match(librarySource,/bookmarksOnly/);
+ assert.match(librarySource,/ブックマーク/);
+ assert.match(librarySource,/engagement\.views/);
+ assert.match(librarySource,/engagement\.bookmarks/);
+ assert.match(librarySource,/engagement\.citations/);
+ assert.match(detailSource,/recordPaperView/);
+ assert.match(detailSource,/togglePaperBookmark/);
+ assert.match(detailSource,/recordPaperCitation/);
+ assert.match(detailSource,/引用をコピー/);
+ assert.match(detailSource,/ブックマーク/);
+ assert.match(adminSource,/trackView=\{false\}/);
+ const engagementSource=readFileSync(new URL('../paper-engagement.ts',import.meta.url),'utf8');
+ assert.match(engagementSource,/lti_paper_engagement_counts/);
+ assert.match(engagementSource,/lti_my_paper_bookmarks/);
+ assert.match(engagementSource,/lti_toggle_paper_bookmark/);
+ assert.match(engagementSource,/lti_record_paper_view/);
+ assert.match(engagementSource,/lti_record_paper_citation/);
+ assert.match(engagementSource,/formatPaperCitation/);
  console.log('PASS: admin can browse all statuses; public library only shows published papers and honors school-name overrides');
 }finally{unlinkSync(path);}
