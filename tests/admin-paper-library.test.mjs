@@ -70,5 +70,8 @@ try{
  assert.match(engagementSource,/formatPaperCitation/);
  assert.doesNotMatch(detailSource,/なぜこのテーマに注目したのか/);
  assert.doesNotMatch(detailSource,/どのように調べ、何が見えてきたのか/);
+ const cloudSource=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
+ assert.match(cloudSource,/https:\/\/lti-explore-six\.vercel\.app\/\?flow=recovery/);
+ assert.doesNotMatch(cloudSource,/lti-explore-lab-to-impact\.vercel\.app\/\?flow=recovery/);
  console.log('PASS: admin can browse all statuses; public library only shows published papers and honors school-name overrides');
 }finally{unlinkSync(path);}
