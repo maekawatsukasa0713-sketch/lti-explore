@@ -1,3 +1,4 @@
+import {runReview} from './review-runner';
 import {AccountManagement} from './accounts';
 import {BulkImport} from './BulkImport';
 import {AdminResearchLibrary} from './AdminResearchLibrary';
@@ -127,6 +128,7 @@ type AiReviewItem = {
   id: string;
   fileName: string;
   sourceFile?: File;
+  progress?: string;
   generatedAt?: string;
   basis?: string;
   paperTitle: string;
@@ -2617,20 +2619,14 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
     // ----------------------------------------
     // AI添削（Wordドロップ→AIが修正点・アドバイス・追加実験の方向性を指摘→生徒に送信）
-    // ※現時点ではフロントのみ。/api/ai-paper-review はSupabase移行時に実装予定。
-    //   バックエンド未接続の間は各項目が「準備中」エラーになるが、その場で手動編集して
-    //   送信フローそのものは今から確認できるようにしてある。
-    // ----------------------------------------
-
-    // Wordファイル1件をAIに送り、修正点・アドバイス・追加実験の方向性を取得する
-    const requestAiPaperReview = async (file: File, force=false): Promise<{ title?: string; generatedAt?: string; basis?: string } & AiReviewResult> => {
-      const input = await analysisInput(file, file.name);
-      return invokeResearchAI({mode:'review',title:file.name,...input,force});
+    // Completed sections are retained while this screen is open; retry resumes missing sections.
+    const requestAiPaperReview = async (file: File, force=false, itemId?:string): Promise<{ title?: string; generatedAt?: string; basis?: string } & AiReviewResult> => {
+      return runReview(file,cloud.profile.id,()=>analysisInput(file,file.name),(input,section)=>invokeResearchAI({mode:'review',title:file.name,...input,force,...(section?{section}:{})}),(progress,partial)=>{if(itemId)setAiReviewItems(prev=>prev.map(it=>it.id===itemId?{...it,progress,...(partial?{result:{...it.result,...partial}}:{})}:it));},force);
     };
     const regenerateReview = async (item: AiReviewItem) => {
       if(!item.sourceFile||item.sent)return;
       updateAiReviewItem(item.id,{status:'processing',error:undefined});
-      try { const res=await requestAiPaperReview(item.sourceFile,true);updateAiReviewItem(item.id,{status:'done',paperTitle:res.title||item.paperTitle,result:{corrections:res.corrections,advice:res.advice,nextExperiments:res.nextExperiments},generatedAt:res.generatedAt,basis:res.basis}); }
+      try { const res=await requestAiPaperReview(item.sourceFile,item.status==='done',item.id);updateAiReviewItem(item.id,{status:'done',paperTitle:res.title||item.paperTitle,result:{corrections:res.corrections,advice:res.advice,nextExperiments:res.nextExperiments},generatedAt:res.generatedAt,basis:res.basis}); }
       catch(e){updateAiReviewItem(item.id,{status:'error',error:e instanceof Error?e.message:'解析に失敗しました。'});}
     };
 
@@ -2644,7 +2640,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
         id: `${Date.now()}-${i}-${f.name}`,
         fileName: f.name,
         sourceFile: f,
-        paperTitle: f.name.replace(/\.docx$/i, ''),
+        paperTitle: f.name.replace(/\.(docx|pdf)$/i, ''),
         status: 'processing',
         result: { corrections: [], advice: [], nextExperiments: [] },
         studentId: '',
@@ -2656,7 +2652,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       for (let i = 0; i < fileArray.length; i++) {
         const itemId = initialItems[i].id;
         try {
-          const res = await requestAiPaperReview(fileArray[i]);
+          const res = await requestAiPaperReview(fileArray[i],false,itemId);
           setAiReviewItems(prev => prev.map(it => it.id === itemId ? {
             ...it,
             status: 'done',
@@ -3400,14 +3396,14 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             <div className="flex items-center gap-2">
                               {item.status === 'processing' && (
                                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 flex items-center gap-1">
-                                  <span className="w-2.5 h-2.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> AI添削中...
+                                  <span className="w-2.5 h-2.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> {item.progress||'AI添削中…'}
                                 </span>
                               )}
                               {item.status === 'done' && !item.sent && (
                                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">添削完了</span>
                               )}
                               {item.status === 'error' && !item.sent && (
-                                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">要手動入力</span>
+                                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">解析を再開できます</span>
                               )}
                               {item.sent && (
                                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 flex items-center gap-1">
@@ -3423,11 +3419,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           </div>
 
                           {item.status === 'error' && (
-                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">{item.error}</p>
+                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">{item.error} 完了した項目はこの画面で保持しています。画面を閉じると失われるため、このまま再開してください。</p>
                           )}
 
                           {item.status !== 'processing' && <ReviewPanels result={item.result} generatedAt={item.generatedAt} basis={item.basis} readOnly={item.sent} onChange={(key,value)=>updateAiReviewResultField(item.id,key,value)}/>}
-                          {item.sourceFile && !item.sent && item.status !== 'processing' && <button type="button" onClick={()=>void regenerateReview(item)} className="text-sm underline text-slate-600">結果を再生成</button>}
+                          {item.sourceFile && !item.sent && item.status !== 'processing' && <button type="button" onClick={()=>void regenerateReview(item)} className="text-sm underline text-slate-600">{item.status==='error'?'未完了の項目を再解析':'結果を再生成'}</button>}
 
                           {item.status !== 'processing' && !item.sent && (
                             <div className="pt-3 border-t border-gray-100 space-y-3">
