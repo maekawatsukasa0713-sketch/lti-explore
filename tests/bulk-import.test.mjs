@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import {mkdtemp,rm} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
 import path from 'node:path';
 const dir=await mkdtemp(path.resolve('.bulk-test-'));
 try{
@@ -14,5 +15,6 @@ try{
  const result={classification:{field:'地学・宇宙',reason:'天体の観測データを扱う'}};
  assert.deepEqual(classificationPatch({classificationMode:'manual',field:'物理'},result),{});
  assert.deepEqual(classificationPatch({classificationMode:'ai'},result),{field:'地学・宇宙',classificationReason:result.classification.reason,bulkReviewed:false});
+ const bulkSource=readFileSync('BulkImport.tsx','utf8');assert.match(bulkSource,/consecutiveFailures>=3/);assert.match(bulkSource,/reason\.includes\('利用上限'\)/);assert.match(bulkSource,/1時間100件・1日1,000件/);
  console.log('PASS: selection confirms review, missing and failed AI blocked, stale versions rejected');
 }finally{await rm(dir,{recursive:true,force:true});}
