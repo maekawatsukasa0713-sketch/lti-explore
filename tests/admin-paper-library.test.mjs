@@ -44,6 +44,8 @@ try{
  assert.match(librarySource,/match:\/その他\//);
  assert.doesNotMatch(librarySource,/AI生成イメージ/);
  assert.doesNotMatch(librarySource,/AI生成・実際の研究写真ではありません/);
+ assert.match(librarySource,/md:grid-cols-2 xl:grid-cols-3/);
+ assert.match(librarySource,/gap-4/);
  const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
  assert.match(detailSource,/ResearchEvaluation/);
  assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
