@@ -68,5 +68,7 @@ try{
  assert.match(engagementSource,/lti_record_paper_view/);
  assert.match(engagementSource,/lti_record_paper_citation/);
  assert.match(engagementSource,/formatPaperCitation/);
+ assert.doesNotMatch(detailSource,/なぜこのテーマに注目したのか/);
+ assert.doesNotMatch(detailSource,/どのように調べ、何が見えてきたのか/);
  console.log('PASS: admin can browse all statuses; public library only shows published papers and honors school-name overrides');
 }finally{unlinkSync(path);}
