@@ -1,4 +1,4 @@
-export const criteria=['問い・着眼点','再現性','手法の妥当性','論理の一貫性','発展性'] as const;
+export const criteria=['着眼点・独創性','再現性','手法の妥当性','論理の一貫性','発展性'] as const;
 export type EvaluationItem={score:1|2|3|4|null;reason:string;evidence:string;nextStep:string};
 export type Evaluation={items:EvaluationItem[]};
 export const levels=['','これから整理','基礎が見える','十分に示される','丁寧に深められている'];
@@ -10,7 +10,7 @@ export function ResearchEvaluation({value,onChange,disabled=false}:{value?:Evalu
  function update(i:number,patch:Partial<EvaluationItem>){onChange?.({items:items.map((v,j)=>j===i?{...v,...patch}:v)});}
  return <section className="bg-white border border-violet-200 rounded-2xl p-4 space-y-4">
  <h3 className="font-bold text-violet-900">研究の5つの観点</h3>
- <p className="text-xs text-slate-600 leading-relaxed">本文に基づく4段階の参考評価です。研究や著者の優劣・成績を決めるものではありません。着眼点の価値と、データが支える結論の範囲を分けて確認します。</p>
+ <p className="text-xs text-slate-600 leading-relaxed">本文に基づく4段階の参考評価です。研究や著者の優劣・成績を決めるものではありません。着眼点・独創性では、高校生ならではの柔軟な発想、身近な違和感から生まれた問い、意外な組み合わせや別角度からの見方を重視します。</p>
  <svg viewBox="0 0 300 275" role="img" aria-label="研究の5観点チャート。各評価は下の一覧にも記載しています。" className="w-full max-w-sm mx-auto">
  {[1,2,3,4].map(n=><polygon key={n} points={points(n*24)} fill="none" stroke="#ddd6fe"/>)}
  {criteria.map((name,i)=>{const [x,y]=point(i,96);const [tx,ty]=point(i,119);return <g key={name}><line x1="150" y1="140" x2={x} y2={y} stroke="#ddd6fe"/><text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize="11" fill="#5b21b6">{name}</text></g>;})}
