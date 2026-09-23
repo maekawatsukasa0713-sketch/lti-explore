@@ -31,6 +31,6 @@ try{
  assert.match(adminSource,/prepareResearch/);
  const detailSource=readFileSync(new URL('../ResearchDetail.tsx',import.meta.url),'utf8');
  assert.match(detailSource,/ResearchEvaluation/);
- assert.match(detailSource,/showEvaluation&&result\?\.evaluation/);
+ assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
  console.log('PASS: admin can browse all statuses; public library only shows published papers and honors school-name overrides');
 }finally{unlinkSync(path);}
