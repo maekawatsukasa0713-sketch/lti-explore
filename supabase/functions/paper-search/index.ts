@@ -1,9 +1,14 @@
 import { runSearch } from './search.ts';
 const cors={'Access-Control-Allow-Origin':'https://lti-explore.vercel.app','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin'};
-const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
+
 const cache=new Map<string,{time:number;data:Awaited<ReturnType<typeof runSearch>>}>();
 Deno.serve(async(req:Request)=>{
- if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
+ const origin=req.headers.get('Origin')||'';
+ const allowedOrigins=['https://lti-explore-six.vercel.app','https://lti-explore-lab-to-impact.vercel.app','https://lti-explore.vercel.app'];
+ const requestCors={...cors,'Access-Control-Allow-Origin':allowedOrigins.includes(origin)?origin:allowedOrigins[0]};
+ const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...requestCors,'Content-Type':'application/json','Cache-Control':'no-store'}});
+ if(origin&&!allowedOrigins.includes(origin))return reply({error:'このURLからは利用できません。'},403);
+ if(req.method==='OPTIONS')return new Response('ok',{headers:requestCors});
  if(req.method!=='POST')return reply({error:'Method not allowed'},405);
  // Validate the user's JWT with Auth; never trust a decoded token or anon key as a user.
  const token=req.headers.get('Authorization');
