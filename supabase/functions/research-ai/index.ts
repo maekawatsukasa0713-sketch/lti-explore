@@ -96,7 +96,7 @@ Deno.serve(async(req:Request)=>{
   const claimedQuota=await quota.json();
   if(typeof claimedQuota!=='number'||!Number.isFinite(claimedQuota)){if(registration?.fail)await registration.fail('quota');return reply({error:'AI解析の利用上限に達しました。時間をおいてから解析してください。'},429);}
   quotaUsageId=claimedQuota;
-  refundQuota=async()=>{const usageId=quotaUsageId;if(usageId===null)return;quotaUsageId=null;try{await fetch(base+'/rest/v1/rpc/lti_refund_ai_quota',{method:'POST',headers:{...authHeaders,'content-type':'application/json'},body:JSON.stringify({usage_id:usageId}),signal:AbortSignal.timeout(8000)});}catch(e){console.warn('AI quota refund failed',{usageId,message:e instanceof Error?e.message:'unknown'});}};
+  refundQuota=async()=>{const usageId=quotaUsageId;if(usageId===null)return;quotaUsageId=null;try{await fetch(base+'/rest/v1/rpc/lti_refund_ai_quota_internal',{method:'POST',headers:{authorization:'Bearer '+Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,apikey:Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,'content-type':'application/json'},body:JSON.stringify({usage_id:usageId,actor:user.id}),signal:AbortSignal.timeout(8000)});}catch(e){console.warn('AI quota refund failed',{usageId,message:e instanceof Error?e.message:'unknown'});}};
   if(body.mode==='register'){
    const background=async()=>{
     let backgroundStage='anthropic';
