@@ -57,6 +57,11 @@ try{
  assert.match(librarySource,/sort==='random'/);
  assert.match(librarySource,/<option value="random">ランダム<\/option>/);
  assert.match(librarySource,/Math\.random\(\)/);
+ assert.match(librarySource,/totalEvaluation/);
+ assert.match(librarySource,/sort==='evaluation'/);
+ assert.match(librarySource,/総合評価順/);
+ assert.match(librarySource,/bTotal-aTotal/);
+ assert.match(librarySource,/items\.length!==5/);
  assert.match(librarySource,/heading='みんなの論文ライブラリ'/);
  assert.match(librarySource,/countLabel/);
  assert.match(librarySource,/emptyText/);
