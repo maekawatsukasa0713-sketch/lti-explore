@@ -92,6 +92,12 @@ try{
  assert.match(engagementSource,/formatPaperCitation/);
  assert.doesNotMatch(detailSource,/なぜこのテーマに注目したのか/);
  assert.doesNotMatch(detailSource,/どのように調べ、何が見えてきたのか/);
+ const appSource=readFileSync(new URL('../App.tsx',import.meta.url),'utf8');
+ assert.match(appSource,/生徒・教員に配信している内容を運営側でも確認できます/);
+ assert.match(appSource,/お知らせ管理を開く/);
+ assert.match(appSource,/公式・申込URL/);
+ assert.match(appSource,/詳細・申込ページ/);
+ assert.match(appSource,/url\?: string/);
  const cloudSource=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
  assert.match(cloudSource,/https:\/\/lti-explore-six\.vercel\.app\/\?flow=recovery/);
  assert.doesNotMatch(cloudSource,/lti-explore-lab-to-impact\.vercel\.app\/\?flow=recovery/);
