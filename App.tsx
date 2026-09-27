@@ -74,6 +74,7 @@ type ContestItem = {
   date: string;
   deadlineDate?: string; // YYYY-MM-DD形式。期限切れ判定に使用
   description: string;
+  url?: string;
   targetType: 'all' | 'specific'; // 'all': 一斉公開, 'specific': 特定校のみ
   targetSchoolIds?: string[];      // 特定校の場合の学校IDリスト
 };
@@ -792,6 +793,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [newContestDate, setNewContestDate] = useState('');
   const [newContestDeadlineDate, setNewContestDeadlineDate] = useState('');
   const [newContestDesc, setNewContestDesc] = useState('');
+  const [newContestUrl, setNewContestUrl] = useState('');
   const [newContestTargetType, setNewContestTargetType] = useState<'all' | 'specific'>('all');
   const [newContestTargetSchools, setNewContestTargetSchools] = useState<string[]>([]);
   const [editingContestId, setEditingContestId] = useState<number | null>(null);
@@ -811,6 +813,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setNewContestDate('');
     setNewContestDeadlineDate('');
     setNewContestDesc('');
+    setNewContestUrl('');
     setNewContestTargetType('all');
     setNewContestTargetSchools([]);
   };
@@ -822,6 +825,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setNewContestDate(c.date);
     setNewContestDeadlineDate(c.deadlineDate || '');
     setNewContestDesc(c.description);
+    setNewContestUrl(c.url || '');
     setNewContestTargetType(c.targetType);
     setNewContestTargetSchools(c.targetSchoolIds || []);
     window.scrollTo(0, 0);
@@ -840,6 +844,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
         date: newContestDate,
         deadlineDate: newContestDeadlineDate || undefined,
         description: newContestDesc || '詳細説明はありません。',
+        url: newContestUrl.trim() || undefined,
         targetType: newContestTargetType,
         targetSchoolIds: newContestTargetType === 'specific' ? newContestTargetSchools : undefined
       } : c));
@@ -852,6 +857,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
         date: newContestDate,
         deadlineDate: newContestDeadlineDate || undefined,
         description: newContestDesc || '詳細説明はありません。',
+        url: newContestUrl.trim() || undefined,
         targetType: newContestTargetType,
         targetSchoolIds: newContestTargetType === 'specific' ? newContestTargetSchools : undefined
       };
@@ -1431,6 +1437,17 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     </div>
                   </div>
 
+                  <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-bold text-sm text-gray-900">📢 LTI運営からのお知らせ</h3>
+                        <p className="text-xs text-gray-500 mt-1">生徒・教員に配信している内容を運営側でも確認できます。</p>
+                      </div>
+                      <button type="button" onClick={()=>setLtiCurrentTab('お知らせ管理')} className="text-xs font-bold text-indigo-700 hover:text-indigo-900">お知らせ管理を開く →</button>
+                    </div>
+                    {notices.length===0?<p className="text-xs text-gray-400 italic p-4 bg-gray-50 rounded-xl text-center">現在お知らせはありません。</p>:<div className="space-y-3">{notices.slice(0,5).map(n=><div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100"><div className="flex items-center justify-between gap-3"><h4 className="font-bold text-gray-900 text-xs">{n.title}</h4><span className="text-xs font-mono text-gray-400 shrink-0">{n.date}</span></div><p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap mt-1">{n.content}</p></div>)}</div>}
+                  </section>
+
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4 lg:col-span-2">
                       <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
@@ -1573,6 +1590,17 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       ></textarea>
                     </div>
 
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-700">公式・申込URL（任意）</label>
+                      <input
+                        type="url"
+                        value={newContestUrl}
+                        onChange={(e) => setNewContestUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
+                      />
+                    </div>
+
                     {/* 公開範囲設定ラジオボタン */}
                     <div className="space-y-2 pt-2 border-t border-gray-100">
                       <label className="text-xs font-bold text-gray-700">配信範囲の選択</label>
@@ -1666,7 +1694,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               )}
                             </div>
                             <h4 className="font-bold text-gray-900 text-sm">{c.title}</h4>
-                            <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>
+                            <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>{c.url&&<a href={c.url} target="_blank" rel="noreferrer" className="inline-flex text-xs font-bold text-indigo-700 hover:text-indigo-900 underline underline-offset-2">詳細・申込ページ →</a>}
                           </div>
                           <div className="flex items-center gap-1.5">
                             <button
@@ -2903,7 +2931,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             </div>
                           </div>
                           <h3 className="font-bold text-base text-gray-900">{c.title}</h3>
-                          <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>
+                          <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>{c.url&&<a href={c.url} target="_blank" rel="noreferrer" className="inline-flex text-xs font-bold text-indigo-700 hover:text-indigo-900 underline underline-offset-2">詳細・申込ページ →</a>}
                         </div>
                       ))
                     )}
@@ -4070,7 +4098,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             </div>
                           </div>
                           <h3 className="font-bold text-base text-gray-900">{c.title}</h3>
-                          <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>
+                          <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>{c.url&&<a href={c.url} target="_blank" rel="noreferrer" className="inline-flex text-xs font-bold text-indigo-700 hover:text-indigo-900 underline underline-offset-2">詳細・申込ページ →</a>}
                         </div>
                       ))
                     )}
