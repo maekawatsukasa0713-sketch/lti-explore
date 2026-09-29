@@ -3554,6 +3554,21 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       ></textarea>
                     </div>
 
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-700">添付資料（任意）</label>
+                      <input
+                        type="file"
+                        accept=".pdf,.docx"
+                        onChange={(e)=>setNewAssignAttachment(e.target.files?.[0]||null)}
+                        className="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                      />
+                      {editingAssignmentId!==null&&assignments.find(a=>a.id===editingAssignmentId)?.attachmentName&&!newAssignAttachment&&
+                        <p className="text-xs text-gray-500">現在の添付: <span className="font-bold">{assignments.find(a=>a.id===editingAssignmentId)?.attachmentName}</span></p>}
+                      {newAssignAttachment&&<p className="text-xs text-orange-700 font-bold">選択中: {newAssignAttachment.name}</p>}
+                      {assignmentUploadProgress!==null&&<div className="space-y-1"><div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-orange-400" style={{width:`${assignmentUploadProgress}%`}}/></div><p className="text-[11px] text-gray-500">アップロード {assignmentUploadProgress}%</p></div>}
+                      <p className="text-[11px] text-gray-400">PDF・Wordに対応。ファイルはSupabase Storageに保存され、アプリ更新では消えません。</p>
+                    </div>
+
                     <div className="flex items-center gap-3">
                       <button
                         type="submit"
@@ -3569,6 +3584,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             setNewAssignTitle('');
                             setNewAssignDeadline('');
                             setNewAssignDesc('');
+                            setNewAssignAttachment(null);
+                            setAssignmentUploadProgress(null);
                           }}
                           className="py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs"
                         >
@@ -3586,6 +3603,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           <span className="text-xs font-mono font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded">期限: {assign.deadline}</span>
                           <h4 className="font-bold text-gray-900 text-base">{assign.title}</h4>
                           <p className="text-xs text-gray-500">{assign.description}</p>
+                          {assign.attachmentName&&<p className="text-[11px] font-bold text-orange-700 flex items-center gap-1"><FileText className="w-3.5 h-3.5"/>添付: {assign.attachmentName}</p>}
                         </div>
                         <div className="flex items-center gap-2">
                           <button aria-label="課題を編集" onClick={(e) => { e.stopPropagation(); handleEditClick(assign); }} className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
@@ -4144,7 +4162,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
                               isSubmitted ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                             }`}>
-                              {isSubmitted ? (submission.late?'提出済み・遅れ':'提出済み') : '未提出'}
+                              {assign.attachmentPath&&<details className="rounded-xl border border-emerald-200 bg-emerald-50/40">
+                            <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-emerald-800 flex items-center gap-2"><FileText className="w-4 h-4"/>先生からの添付資料：{assign.attachmentName||'添付資料'}<ChevronRight className="w-4 h-4 ml-auto"/></summary>
+                            <div className="border-t border-emerald-100 p-3 bg-white rounded-b-xl"><PdfView path={assign.attachmentPath} label={assign.attachmentName||assign.title}/></div>
+                          </details>}
+
+                          {isSubmitted ? (submission.late?'提出済み・遅れ':'提出済み') : '未提出'}
                             </span>
                           </div>
 
