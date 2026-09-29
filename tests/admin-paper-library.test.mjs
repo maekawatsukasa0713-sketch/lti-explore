@@ -140,6 +140,16 @@ try{
 
  const cloudSource=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
  assert.match(cloudSource,/https:\/\/lti-explore-six\.vercel\.app\/\?flow=recovery/);
+ assert.match(cloudSource,/function PdfFullscreenViewer/);
+ assert.match(cloudSource,/LTI RESEARCH VIEWER/);
+ assert.match(cloudSource,/aria-label="論文PDF 全画面ビューア"/);
+ assert.match(cloudSource,/e\.key==='ArrowLeft'/);
+ assert.match(cloudSource,/e\.key==='ArrowRight'/);
+ assert.match(cloudSource,/e\.key==='Escape'/);
+ assert.match(cloudSource,/pdfjs-dist/);
+ assert.match(cloudSource,/bg-slate-950 text-white flex flex-col/);
+ assert.doesNotMatch(cloudSource,/fixed inset-0 z-\[110\] bg-white p-4 overflow-auto/);
+ assert.match(detailSource,/label=\{paper\.fileName\|\|paper\.title\}/);
  assert.doesNotMatch(cloudSource,/lti-explore-lab-to-impact\.vercel\.app\/\?flow=recovery/);
  console.log('PASS: admin library separates hidden papers into archive; public library only shows published papers');
 }finally{unlinkSync(path);}
