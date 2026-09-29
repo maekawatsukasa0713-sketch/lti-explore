@@ -140,11 +140,17 @@ try{
 
  const cloudSource=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
  assert.match(cloudSource,/https:\/\/lti-explore-six\.vercel\.app\/\?flow=recovery/);
+ assert.match(cloudSource,/function PdfPageCanvas/);
  assert.match(cloudSource,/function PdfFullscreenViewer/);
  assert.match(cloudSource,/LTI RESEARCH VIEWER/);
  assert.match(cloudSource,/aria-label="論文PDF 全画面ビューア"/);
  assert.match(cloudSource,/e\.key==='ArrowLeft'/);
  assert.match(cloudSource,/e\.key==='ArrowRight'/);
+ assert.match(cloudSource,/Array\.from\(\{length:pages\}/);
+ assert.match(cloudSource,/PdfPageCanvas key=\{pageNumber\}/);
+ assert.match(cloudSource,/スクロールで全ページを連続閲覧/);
+ assert.match(cloudSource,/pdf-page-\$\{pageNumber\}/);
+ assert.match(cloudSource,/scrollIntoView/);
  assert.match(cloudSource,/e\.key==='Escape'/);
  assert.match(cloudSource,/pdfjs-dist/);
  assert.match(cloudSource,/bg-slate-950 text-white flex flex-col/);
