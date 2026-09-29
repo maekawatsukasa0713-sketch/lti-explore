@@ -1,3 +1,4 @@
+import {SupportMessages} from './SupportMessages';
 import {runReview} from './review-runner';
 import {AccountManagement} from './accounts';
 import {BulkImport} from './BulkImport';
@@ -1330,6 +1331,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     };
 
     const ltiMenu = [
+      { name: 'LTI受信ボックス', icon: Send },
       { name: 'ホーム', icon: Home },
       { name: 'みんなの論文', icon: BookOpen },
       { name: '教材管理', icon: FileUp },
@@ -2324,6 +2326,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   </div>
                 </div>
 
+              ) : ltiCurrentTab === 'LTI受信ボックス' ? (
+                <SupportMessages/>
               ) : ltiCurrentTab === 'お知らせ管理' ? (
                 <div className="space-y-6 max-w-3xl">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
@@ -2867,6 +2871,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       { name: 'AI添削', icon: Bot },
 
 
+      { name: 'LTI運営にメッセージ', icon: Send },
       { name: 'アカウント設定', icon: UserCog },
     ];
     const normalizedTeacherMenuOrder = teacherMenuOrder.map(name=>name==='進捗管理'?'課題管理':name);
@@ -3854,6 +3859,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   <p className="text-xs text-gray-400 text-center font-medium">全{schoolTeachers.length}名を表示中</p>
                 </div>
 
+              ) : currentTab === 'LTI運営にメッセージ' ? (
+                <SupportMessages/>
               ) : currentTab === 'アカウント設定' ? (
                 <div className="space-y-6 max-w-2xl">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
@@ -3986,6 +3993,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       { name: 'みんなの論文', icon: BookOpen },
       { name: '学術論文の検索', icon: Search },
       { name: '先生からのフィードバック', icon: Bot },
+      { name: 'LTI運営にメッセージ', icon: Send },
       { name: 'アカウント設定', icon: UserCog },
     ];
     const studentMenuNames = reconcileMenuOrder(studentMenuOrder, studentMenuBase.map(m => m.name));
@@ -4490,6 +4498,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   )}
                 </div>
 
+              ) : currentTab === 'LTI運営にメッセージ' ? (
+                <SupportMessages/>
               ) : currentTab === 'アカウント設定' ? (
                 /* 【要件①用】生徒側：表示名・パスワード変更画面 */
                 <div className="space-y-6 max-w-2xl">
