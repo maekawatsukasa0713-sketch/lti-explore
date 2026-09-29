@@ -154,6 +154,26 @@ input, select, textarea { min-width: 0; }
     flex-wrap: wrap;
     gap: .75rem;
   }
+  .lti-connection-bar {
+    left: .625rem !important;
+    right: .625rem !important;
+    bottom: .625rem !important;
+    width: auto;
+    max-width: calc(100vw - 1.25rem);
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: .35rem;
+    padding: .5rem .65rem !important;
+  }
+  .lti-connection-bar > span { width: 100%; text-align: center; }
+  .account-manager header > div:first-child { flex-wrap: wrap; }
+  .account-manager header h2 { font-size: 1.2rem; }
+  .account-manager nav { display: grid !important; grid-template-columns: 1fr; }
+  .account-manager nav button { width: 100%; }
+  .account-manager form select,
+  .account-manager form input:not([type=checkbox]),
+  .account-manager form button { max-width: 100%; }
+
 }
 
 @media(max-width: 520px) {
