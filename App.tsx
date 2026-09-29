@@ -4156,33 +4156,44 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     {schoolAssignments.map(assign => {
                       const submission = assign.submissions?.[currentStudentId];
                       const isSubmitted = submission && submission.status === '提出済み';
 
                       return (
-                        <div key={assign.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded">
+                        <div key={assign.id} className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <span className="self-start text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg">
                               期限: {assign.deadline}
                             </span>
-                            <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                            <span className={`self-start sm:self-auto shrink-0 text-xs font-bold px-3 py-1 rounded-full ${
                               isSubmitted ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                             }`}>
-                              {assign.attachmentPath&&<details className="rounded-xl border border-emerald-200 bg-emerald-50/40">
-                            <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-emerald-800 flex items-center gap-2"><FileText className="w-4 h-4"/>先生からの添付資料：{assign.attachmentName||'添付資料'}<ChevronRight className="w-4 h-4 ml-auto"/></summary>
-                            <div className="border-t border-emerald-100 p-3 bg-white rounded-b-xl"><PdfView path={assign.attachmentPath} label={assign.attachmentName||assign.title}/></div>
-                          </details>}
-
-                          {isSubmitted ? (submission.late?'提出済み・遅れ':'提出済み') : '未提出'}
+                              {isSubmitted ? (submission.late ? '提出済み・遅れ' : '提出済み') : '未提出'}
                             </span>
                           </div>
 
                           <div>
-                            <h3 className="font-bold text-base text-gray-900">{assign.title}</h3>
-                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{assign.description}</p>
+                            <h3 className="font-bold text-base text-gray-900 leading-snug">{assign.title}</h3>
+                            <p className="text-xs text-gray-500 mt-1.5 leading-relaxed whitespace-pre-wrap">{assign.description}</p>
                           </div>
+
+                          {assign.attachmentPath && (
+                            <details className="overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/40">
+                              <summary className="cursor-pointer list-none px-3.5 py-3 text-xs font-bold text-emerald-800 flex items-center gap-2.5">
+                                <FileText className="w-4 h-4 shrink-0" />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-[10px] font-bold text-emerald-600 mb-0.5">先生からの添付資料</span>
+                                  <span className="block break-all leading-relaxed">{assign.attachmentName || '添付資料'}</span>
+                                </span>
+                                <ChevronRight className="w-4 h-4 shrink-0" />
+                              </summary>
+                              <div className="border-t border-emerald-100 p-3 bg-white">
+                                <PdfView path={assign.attachmentPath} label={assign.attachmentName || assign.title} />
+                              </div>
+                            </details>
+                          )}
 
                           {isSubmitted ? (
                             <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2 text-xs">
