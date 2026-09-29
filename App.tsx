@@ -3329,7 +3329,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     const submittedList = schoolStudents.filter(s => activeAssign.submissions?.[s.id]?.status === '提出済み').sort((a,b)=>a.class.localeCompare(b.class,'ja',{numeric:true}) || ((a as any).attendance_number ?? Number.MAX_SAFE_INTEGER)-((b as any).attendance_number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name,'ja'));
                     const unsubmittedList = schoolStudents.filter(s => !activeAssign.submissions?.[s.id] || activeAssign.submissions[s.id].status !== '提出済み').sort((a,b)=>a.class.localeCompare(b.class,'ja',{numeric:true}) || ((a as any).attendance_number ?? Number.MAX_SAFE_INTEGER)-((b as any).attendance_number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name,'ja'));
                     const studentQuery = assignmentStudentQuery.trim().toLocaleLowerCase('ja');
-                    const matchesStudentQuery = (student: Profile) => {
+                    const matchesStudentQuery = (student: {name:string;class:string;attendance_number?:number|null}) => {
                       if (!studentQuery) return true;
                       const attendance = (student as any).attendance_number ?? '';
                       return [student.name, student.class, String(attendance)].join(' ').toLocaleLowerCase('ja').includes(studentQuery);
