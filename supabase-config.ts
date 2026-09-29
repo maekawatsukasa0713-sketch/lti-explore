@@ -6,6 +6,7 @@ const PROD_HOSTS = new Set([
   'lti-explore-lab-to-impact.vercel.app',
   'lti-explore-git-main-lab-to-impact.vercel.app',
   'lti-explore.vercel.app',
+  'explore.labtoimpact.com',
 ]);
 
 const browserHost = typeof window !== 'undefined' ? window.location.hostname : '';
