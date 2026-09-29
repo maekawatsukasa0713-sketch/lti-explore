@@ -34,6 +34,8 @@ type AssignmentData = {
   deadline: string;
   status: string;
   description: string;
+  attachmentPath?: string;
+  attachmentName?: string;
   submissions: Record<string, SubmissionData>;
   schoolId: string;
 };
@@ -1060,14 +1062,32 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [newAssignTitle, setNewAssignTitle] = useState('');
   const [newAssignDeadline, setNewAssignDeadline] = useState('');
   const [newAssignDesc, setNewAssignDesc] = useState('');
+  const [newAssignAttachment, setNewAssignAttachment] = useState<File | null>(null);
+  const [assignmentUploadProgress, setAssignmentUploadProgress] = useState<number | null>(null);
   const [assignMessage, setAssignMessage] = useState('');
   const [editingAssignmentId, setEditingAssignmentId] = useState<number | null>(null);
 
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
 
-  const handleCreateOrUpdateAssignment = (e: React.FormEvent) => {
+  const handleCreateOrUpdateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAssignTitle.trim() || !newAssignDeadline.trim()) return;
+
+    const existing = editingAssignmentId !== null ? assignments.find(a => a.id === editingAssignmentId) : undefined;
+    let attachmentPath = existing?.attachmentPath;
+    let attachmentName = existing?.attachmentName;
+
+    if (newAssignAttachment) {
+      try {
+        setAssignmentUploadProgress(0);
+        attachmentPath = await uploadPdf(newAssignAttachment, percent => setAssignmentUploadProgress(percent));
+        attachmentName = newAssignAttachment.name;
+      } catch (error) {
+        setAssignmentUploadProgress(null);
+        setAssignMessage((error as Error).message || '添付ファイルをアップロードできませんでした。');
+        return;
+      }
+    }
 
     if (editingAssignmentId !== null) {
       setAssignments(assignments.map(a => {
@@ -1076,7 +1096,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
             ...a,
             title: newAssignTitle,
             deadline: newAssignDeadline,
-            description: newAssignDesc || '詳細な説明はありません。'
+            description: newAssignDesc || '詳細な説明はありません。',
+            attachmentPath,
+            attachmentName
           };
         }
         return a;
@@ -1090,6 +1112,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
         deadline: newAssignDeadline,
         status: '未提出',
         description: newAssignDesc || '詳細な説明はありません。',
+        attachmentPath,
+        attachmentName,
         schoolId: schoolId,
         submissions: {}
       };
@@ -1099,6 +1123,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setNewAssignTitle('');
     setNewAssignDeadline('');
     setNewAssignDesc('');
+    setNewAssignAttachment(null);
+    setAssignmentUploadProgress(null);
     setTimeout(() => setAssignMessage(''), 4000);
   };
 
@@ -1107,6 +1133,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setNewAssignTitle(assign.title);
     setNewAssignDeadline(assign.deadline.replace(/\//g, '-'));
     setNewAssignDesc(assign.description);
+    setNewAssignAttachment(null);
+    setAssignmentUploadProgress(null);
     setCurrentTab('課題配信');
   };
 
@@ -1118,6 +1146,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
         setNewAssignTitle('');
         setNewAssignDeadline('');
         setNewAssignDesc('');
+        setNewAssignAttachment(null);
+        setAssignmentUploadProgress(null);
       }
     }
   };
