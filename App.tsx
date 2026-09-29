@@ -78,114 +78,89 @@ type ContestItem = {
   deadlineDate?: string; // YYYY-MM-DD形式。期限切れ判定に使用
   description: string;
   url?: string;
-  imageUrl?: string;
   brochurePath?: string;
   brochureName?: string;
   targetType: 'all' | 'specific'; // 'all': 一斉公開, 'specific': 特定校のみ
   targetSchoolIds?: string[];      // 特定校の場合の学校IDリスト
 };
 
-type NoticeCategory = '重要' | 'イベント' | 'アップデート' | '募集' | '一般';
-
 type NoticeItem = {
   id: number;
   title: string;
   date: string;
   content: string;
-  category?: NoticeCategory;
-  featured?: boolean;
-  linkUrl?: string;
-  linkLabel?: string;
 };
 
-const NOTICE_META: Record<NoticeCategory, { badge: string; accent: string }> = {
-  '重要': { badge: 'bg-rose-50 text-rose-700 border-rose-200', accent: 'border-l-rose-400' },
-  'イベント': { badge: 'bg-violet-50 text-violet-700 border-violet-200', accent: 'border-l-violet-400' },
-  'アップデート': { badge: 'bg-sky-50 text-sky-700 border-sky-200', accent: 'border-l-sky-400' },
-  '募集': { badge: 'bg-amber-50 text-amber-800 border-amber-200', accent: 'border-l-amber-400' },
-  '一般': { badge: 'bg-slate-50 text-slate-600 border-slate-200', accent: 'border-l-slate-300' },
-};
-
-const safeNoticeUrl = (url?: string) => {
+const safeExternalUrl = (url?: string) => {
   const value = (url || '').trim();
   return /^https?:\/\//i.test(value) ? value : '';
 };
 
-function NoticeCard({ notice, featured = false }: { notice: NoticeItem; featured?: boolean }) {
-  const category: NoticeCategory = notice.category || '一般';
-  const meta = NOTICE_META[category];
-  const href = safeNoticeUrl(notice.linkUrl);
+function ContestLinkThumbnail({ url, title }: { url?: string; title: string }) {
+  const [imageUrl, setImageUrl] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const href = safeExternalUrl(url);
 
-  return (
-    <article className={`rounded-2xl border border-gray-200 border-l-[3px] ${meta.accent} bg-white ${featured ? 'p-5' : 'p-4'}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold ${meta.badge}`}>{category}</span>
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400">
-          <CalendarDays className="h-3.5 w-3.5" /> {notice.date}
-        </span>
-      </div>
-      <h4 className={`mt-2.5 font-bold leading-snug text-gray-900 ${featured ? 'text-base' : 'text-sm'}`}>{notice.title}</h4>
-      <p className="mt-1.5 whitespace-pre-wrap text-xs leading-6 text-gray-600">{notice.content}</p>
-      {href && (
-        <a href={href} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900">
-          {notice.linkLabel?.trim() || '詳細を見る'} <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-      )}
-    </article>
-  );
-}
+  useEffect(() => {
+    let alive = true;
+    setImageUrl('');
+    setLoaded(false);
+    if (!href) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 7000);
+    fetch('/api/link-preview?url=' + encodeURIComponent(href), { signal: controller.signal })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!alive) return;
+        setImageUrl(typeof data?.image === 'string' ? data.image : '');
+        setLoaded(true);
+      })
+      .catch(() => { if (alive) setLoaded(true); })
+      .finally(() => window.clearTimeout(timer));
+    return () => { alive = false; controller.abort(); window.clearTimeout(timer); };
+  }, [href]);
 
-function NoticeFeed({ items, limit }: { items: NoticeItem[]; limit?: number }) {
-  const display = typeof limit === 'number' ? items.slice(0, limit) : items;
-  if (display.length === 0) return <p className="rounded-xl bg-gray-50 p-4 text-center text-xs italic text-gray-400">現在お知らせはありません。</p>;
-  const [latest, ...rest] = display;
+  if (!href) return null;
+  if (!loaded) return <div className="h-24 w-32 shrink-0 animate-pulse rounded-xl bg-gray-100" aria-label="リンク画像を読み込み中" />;
+  if (!imageUrl) return null;
   return (
-    <div className="space-y-3">
-      <NoticeCard notice={latest} featured={latest.featured === true} />
-      {rest.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-          {rest.map(n => <NoticeCard key={n.id} notice={n} featured={Boolean(n.featured)} />)}
-        </div>
-      )}
-    </div>
+    <a href={href} target="_blank" rel="noreferrer" className="block h-24 w-32 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+      <img src={imageUrl} alt={title + ' の公式ページ画像'} loading="lazy" className="h-full w-full object-cover" />
+    </a>
   );
 }
 
 function ContestCard({ contest, expired = false, audience, actions }: { contest: ContestItem; expired?: boolean; audience?: React.ReactNode; actions?: React.ReactNode }) {
-  const href = safeNoticeUrl(contest.url);
-  const explicitImage = safeNoticeUrl(contest.imageUrl);
-  const directImage = href && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(href) ? href : '';
-  const imageHref = explicitImage || directImage;
-
+  const href = safeExternalUrl(contest.url);
   return (
-    <article className={`overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm ${expired ? 'opacity-65' : ''}`}>
-      {imageHref && (
-        <div className="flex h-40 items-center justify-center border-b border-gray-100 bg-gray-50">
-          <img src={imageHref} alt="" loading="lazy" className="h-full w-full object-contain" />
-        </div>
-      )}
-      <div className="space-y-3 p-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">{contest.category}</span>
-          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400"><CalendarDays className="h-3.5 w-3.5" />{contest.date}</span>
-          {expired && <span className="rounded-md bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-500">期限切れ</span>}
-        </div>
-        <div>
-          <h3 className="text-base font-bold leading-snug text-gray-900">{contest.title}</h3>
-          <p className="mt-1.5 whitespace-pre-wrap text-xs leading-6 text-gray-600">{contest.description}</p>
-        </div>
-        {audience}
-        {contest.brochurePath && (
-          <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-2.5">
-            <p className="mb-2 text-[11px] font-bold text-gray-500">パンフレット</p>
-            <PdfView path={contest.brochurePath} label={contest.brochureName || contest.title} compact />
+    <article className={`rounded-2xl border border-gray-200 bg-white p-5 shadow-sm ${expired ? 'opacity-65' : ''}`}>
+      <div className="flex items-start gap-4">
+        <ContestLinkThumbnail url={contest.url} title={contest.title} />
+        <div className="min-w-0 flex-1 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">{contest.category}</span>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400"><CalendarDays className="h-3.5 w-3.5" />{contest.date}</span>
+            {expired && <span className="rounded-md bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-500">期限切れ</span>}
           </div>
-        )}
-        <div className="flex flex-wrap items-center gap-3">
-          {href && <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900">公式・申込ページ <ExternalLink className="h-3.5 w-3.5" /></a>}
-          {actions}
+          <div>
+            <h3 className="text-base font-bold leading-snug text-gray-900">{contest.title}</h3>
+            <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-gray-600">{contest.description}</p>
+          </div>
+          {audience}
+          <div className="flex flex-wrap items-center gap-3">
+            {href && <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900">公式・申込ページ <ExternalLink className="h-3.5 w-3.5" /></a>}
+            {actions}
+          </div>
         </div>
       </div>
+      {contest.brochurePath && (
+        <details className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-gray-50/70">
+          <summary className="cursor-pointer list-none px-3.5 py-2.5 text-xs font-bold text-gray-700">パンフレットを小さく表示</summary>
+          <div className="border-t border-gray-200 bg-white p-2.5">
+            <PdfView path={contest.brochurePath} label={contest.brochureName || contest.title} compact />
+          </div>
+        </details>
+      )}
     </article>
   );
 }
@@ -914,7 +889,6 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [newContestDeadlineDate, setNewContestDeadlineDate] = useState('');
   const [newContestDesc, setNewContestDesc] = useState('');
   const [newContestUrl, setNewContestUrl] = useState('');
-  const [newContestImageUrl, setNewContestImageUrl] = useState('');
   const [newContestBrochureFile, setNewContestBrochureFile] = useState<File | null>(null);
   const [contestBrochureUploadProgress, setContestBrochureUploadProgress] = useState<number | null>(null);
   const [newContestTargetType, setNewContestTargetType] = useState<'all' | 'specific'>('all');
@@ -937,7 +911,6 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setNewContestDeadlineDate('');
     setNewContestDesc('');
     setNewContestUrl('');
-    setNewContestImageUrl('');
     setNewContestBrochureFile(null);
     setContestBrochureUploadProgress(null);
     setNewContestTargetType('all');
@@ -952,7 +925,6 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setNewContestDeadlineDate(c.deadlineDate || '');
     setNewContestDesc(c.description);
     setNewContestUrl(c.url || '');
-    setNewContestImageUrl(c.imageUrl || '');
     setNewContestBrochureFile(null);
     setContestBrochureUploadProgress(null);
     setNewContestTargetType(c.targetType);
@@ -986,8 +958,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       date: newContestDate.trim(),
       deadlineDate: newContestDeadlineDate || undefined,
       description: newContestDesc.trim() || '詳細説明はありません。',
-      url: safeNoticeUrl(newContestUrl) || undefined,
-      imageUrl: safeNoticeUrl(newContestImageUrl) || undefined,
+      url: safeExternalUrl(newContestUrl) || undefined,
       brochurePath,
       brochureName,
       targetType: newContestTargetType,
@@ -1017,10 +988,6 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   // 【要件③用】LTI運営側：お知らせ管理用ステート
   const [newNoticeTitle, setNewNoticeTitle] = useState('');
   const [newNoticeContent, setNewNoticeContent] = useState('');
-  const [newNoticeCategory, setNewNoticeCategory] = useState<NoticeCategory>('一般');
-  const [newNoticeFeatured, setNewNoticeFeatured] = useState(true);
-  const [newNoticeLinkUrl, setNewNoticeLinkUrl] = useState('');
-  const [newNoticeLinkLabel, setNewNoticeLinkLabel] = useState('');
   const [editingNoticeId, setEditingNoticeId] = useState<number | null>(null);
   const [noticeMessage, setNoticeMessage] = useState('');
 
@@ -1028,20 +995,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setEditingNoticeId(null);
     setNewNoticeTitle('');
     setNewNoticeContent('');
-    setNewNoticeCategory('一般');
-    setNewNoticeFeatured(true);
-    setNewNoticeLinkUrl('');
-    setNewNoticeLinkLabel('');
   };
 
   const handleStartEditNotice = (n: NoticeItem) => {
     setEditingNoticeId(n.id);
     setNewNoticeTitle(n.title);
     setNewNoticeContent(n.content);
-    setNewNoticeCategory(n.category || '一般');
-    setNewNoticeFeatured(Boolean(n.featured));
-    setNewNoticeLinkUrl(n.linkUrl || '');
-    setNewNoticeLinkLabel(n.linkLabel || '');
     window.scrollTo(0, 0);
   };
 
@@ -1049,20 +1008,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     e.preventDefault();
     if (!newNoticeTitle.trim()) return;
     const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '/');
-    const noticePayload = {
-      title: newNoticeTitle.trim(),
-      content: newNoticeContent.trim() || '詳細はありません。',
-      category: newNoticeCategory,
-      featured: newNoticeFeatured,
-      linkUrl: safeNoticeUrl(newNoticeLinkUrl) || undefined,
-      linkLabel: newNoticeLinkLabel.trim() || undefined,
-    };
 
     if (editingNoticeId !== null) {
-      setNotices(notices.map(n => n.id === editingNoticeId ? { ...n, ...noticePayload } : n));
+      setNotices(notices.map(n => n.id === editingNoticeId ? { ...n, title: newNoticeTitle, content: newNoticeContent } : n));
       setNoticeMessage('お知らせを更新しました！');
     } else {
-      const newNotice: NoticeItem = { id: Date.now(), date: todayStr, ...noticePayload };
+      const newNotice: NoticeItem = { id: Date.now(), title: newNoticeTitle, date: todayStr, content: newNoticeContent || '詳細はありません。' };
       setNotices([newNotice, ...notices]);
       setNoticeMessage('お知らせを配信しました！生徒・教員のホーム画面に表示されます。');
     }
@@ -1640,7 +1591,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       </div>
                       <button type="button" onClick={()=>setLtiCurrentTab('お知らせ管理')} className="text-xs font-bold text-indigo-700 hover:text-indigo-900">お知らせ管理を開く →</button>
                     </div>
-                    <NoticeFeed items={notices} limit={5} />
+                    {notices.length===0?<p className="text-xs text-gray-400 italic p-4 bg-gray-50 rounded-xl text-center">現在お知らせはありません。</p>:<div className="space-y-3">{notices.slice(0,5).map(n=><div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100"><div className="flex items-center justify-between gap-3"><h4 className="font-bold text-gray-900 text-xs">{n.title}</h4><span className="text-xs font-mono text-gray-400 shrink-0">{n.date}</span></div><p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap mt-1">{n.content}</p></div>)}</div>}
                   </section>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1796,57 +1747,25 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-700">告知画像URL（任意）</label>
-                        <input
-                          type="url"
-                          value={newContestImageUrl}
-                          onChange={(e) => setNewContestImageUrl(e.target.value)}
-                          placeholder="公式サイトのOGP画像・告知画像URL"
-                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
-                        />
-                        <p className="text-[11px] text-gray-400">画像URLを入れるとカード上部に小さく表示します。</p>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-700">パンフレットPDF（任意）</label>
-                        <input
-                          type="file"
-                          accept=".pdf,application/pdf"
-                          onChange={(e) => setNewContestBrochureFile(e.target.files?.[0] || null)}
-                          className="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-                        />
-                        {editingContestId !== null && contests.find(c=>c.id===editingContestId)?.brochureName && !newContestBrochureFile && (
-                          <p className="text-[11px] text-gray-500">現在のパンフレット: <span className="font-bold">{contests.find(c=>c.id===editingContestId)?.brochureName}</span></p>
-                        )}
-                        {contestBrochureUploadProgress !== null && (
-                          <div className="space-y-1">
-                            <div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full bg-indigo-500" style={{width:`${contestBrochureUploadProgress}%`}} /></div>
-                            <p className="text-[11px] text-gray-400">アップロード {contestBrochureUploadProgress}%</p>
-                          </div>
-                        )}
-                      </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-700">パンフレットPDF（任意）</label>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        onChange={(e) => setNewContestBrochureFile(e.target.files?.[0] || null)}
+                        className="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                      />
+                      <p className="text-[11px] text-gray-400">公式URLのページ画像は一覧カード左側に自動表示します。パンフレットはカード内で小さく開けます。</p>
+                      {editingContestId !== null && contests.find(c=>c.id===editingContestId)?.brochureName && !newContestBrochureFile && (
+                        <p className="text-[11px] text-gray-500">現在のパンフレット: <span className="font-bold">{contests.find(c=>c.id===editingContestId)?.brochureName}</span></p>
+                      )}
+                      {contestBrochureUploadProgress !== null && (
+                        <div className="space-y-1">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full bg-indigo-500" style={{width:`${contestBrochureUploadProgress}%`}} /></div>
+                          <p className="text-[11px] text-gray-400">アップロード {contestBrochureUploadProgress}%</p>
+                        </div>
+                      )}
                     </div>
-
-                    {(newContestTitle.trim() || newContestImageUrl.trim()) && (
-                      <div className="space-y-2 border-t border-gray-100 pt-4">
-                        <p className="text-[11px] font-bold text-gray-400">表示プレビュー</p>
-                        <ContestCard contest={{
-                          id: editingContestId || 0,
-                          title: newContestTitle || '大会・学会タイトル',
-                          category: newContestCategory || 'その他',
-                          date: newContestDate || '日程未設定',
-                          deadlineDate: newContestDeadlineDate || undefined,
-                          description: newContestDesc || '概要がここに表示されます。',
-                          url: newContestUrl,
-                          imageUrl: newContestImageUrl,
-                          brochurePath: editingContestId !== null && !newContestBrochureFile ? contests.find(c=>c.id===editingContestId)?.brochurePath : undefined,
-                          brochureName: editingContestId !== null && !newContestBrochureFile ? contests.find(c=>c.id===editingContestId)?.brochureName : newContestBrochureFile?.name,
-                          targetType: newContestTargetType,
-                          targetSchoolIds: newContestTargetSchools
-                        }} expired={false} />
-                      </div>
-                    )}
 
                     {/* 公開範囲設定ラジオボタン */}
                     <div className="space-y-2 pt-2 border-t border-gray-100">
@@ -2536,41 +2455,6 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       ></textarea>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-700">種類</label>
-                        <select value={newNoticeCategory} onChange={e=>setNewNoticeCategory(e.target.value as NoticeCategory)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600">
-                          <option value="一般">一般</option>
-                          <option value="重要">重要</option>
-                          <option value="イベント">イベント</option>
-                          <option value="募集">募集</option>
-                          <option value="アップデート">アップデート</option>
-                        </select>
-                      </div>
-                      <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 cursor-pointer">
-                        <input type="checkbox" checked={newNoticeFeatured} onChange={e=>setNewNoticeFeatured(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
-                        <span><span className="block text-xs font-bold text-gray-800">先頭で少し大きく表示</span><span className="block text-[11px] text-gray-500 mt-0.5">大事な案内だけに使う想定です</span></span>
-                      </label>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-700">リンクURL（任意）</label>
-                        <input type="url" value={newNoticeLinkUrl} onChange={e=>setNewNoticeLinkUrl(e.target.value)} placeholder="https://..." className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-700">リンク文言（任意）</label>
-                        <input type="text" value={newNoticeLinkLabel} onChange={e=>setNewNoticeLinkLabel(e.target.value)} placeholder="例：詳細を見る" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600" />
-                      </div>
-                    </div>
-
-                    {(newNoticeTitle.trim() || newNoticeContent.trim()) && (
-                      <div className="space-y-2 border-t border-gray-100 pt-4">
-                        <p className="text-[11px] font-bold text-gray-400">表示プレビュー</p>
-                        <NoticeCard notice={{ id: editingNoticeId || 0, title: newNoticeTitle || 'お知らせタイトル', date: new Date().toISOString().split('T')[0].replace(/-/g, '/'), content: newNoticeContent || '本文がここに表示されます。', category: newNoticeCategory, featured: newNoticeFeatured, linkUrl: newNoticeLinkUrl, linkLabel: newNoticeLinkLabel }} featured={newNoticeFeatured} />
-                      </div>
-                    )}
-
                     <button
                       type="submit"
                       className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center gap-2"
@@ -2586,13 +2470,25 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     ) : (
                       <div className="space-y-3">
                         {notices.map(n => (
-                          <div key={n.id} className="relative">
-                            <NoticeCard notice={n} featured={Boolean(n.featured)} />
-                            <div className="absolute right-3 bottom-3 flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white/95 p-1 shadow-sm backdrop-blur">
-                              <button onClick={() => handleStartEditNotice(n)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="編集">
+                          <div key={n.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-start justify-between gap-4">
+                            <div className="space-y-1 flex-1">
+                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
+                              <h4 className="font-bold text-gray-900 text-sm">{n.title}</h4>
+                              <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => handleStartEditNotice(n)}
+                                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                title="編集"
+                              >
                                 <Edit3 className="w-4 h-4" />
                               </button>
-                              <button onClick={() => handleDeleteNotice(n.id)} className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="削除">
+                              <button
+                                onClick={() => handleDeleteNotice(n.id)}
+                                className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                title="削除"
+                              >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
@@ -3182,7 +3078,21 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                     <h3 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">📢 LTI運営からのお知らせ</h3>
-                    <NoticeFeed items={notices} />
+                    {notices.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">現在お知らせはありません。</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {notices.map(n => (
+                          <div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <div className="flex items-center justify-between mb-1">
+                              <h4 className="font-bold text-gray-900 text-xs">{n.title}</h4>
+                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -4297,7 +4207,21 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                     <h3 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">📢 LTI運営からのお知らせ</h3>
-                    <NoticeFeed items={notices} />
+                    {notices.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">現在お知らせはありません。</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {notices.map(n => (
+                          <div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <div className="flex items-center justify-between mb-1">
+                              <h4 className="font-bold text-gray-900 text-xs">{n.title}</h4>
+                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
