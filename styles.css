@@ -44,6 +44,7 @@ input, select, textarea { min-width: 0; }
 .lti-shell main, .lti-shell main > div { min-width: 0; max-width: 100%; }
 
 @media(max-width: 900px) {
+  html { font-size: 15px; }
   .lti-shell { display: block !important; min-height: 100dvh; }
   .lti-shell > div.flex-1 { width: 100%; min-width: 0; min-height: 100dvh; }
 
@@ -53,7 +54,7 @@ input, select, textarea { min-width: 0; }
     inset: 0 auto 0 0;
     z-index: 70;
     display: flex;
-    width: min(88vw, 320px) !important;
+    width: min(82vw, 300px) !important;
     height: 100dvh !important;
     max-height: none !important;
     overflow-y: auto;
@@ -160,7 +161,7 @@ input, select, textarea { min-width: 0; }
     row-gap: .35rem;
     padding: .5rem .65rem !important;
   }
-  .lti-connection-bar > span { width: 100%; text-align: center; }
+  .lti-connection-bar > span { display: none; }
   .account-manager header > div:first-child { flex-wrap: wrap; }
   .account-manager header h2 { font-size: 1.2rem; }
   .account-manager nav { display: grid !important; grid-template-columns: 1fr; }
@@ -172,15 +173,21 @@ input, select, textarea { min-width: 0; }
 }
 
 @media(max-width: 520px) {
-  body { font-size: 15px; }
-  .lti-shell main { padding: .625rem .625rem 5.5rem !important; }
-  .lti-shell main .rounded-2xl { border-radius: .875rem; }
-  .lti-shell main .grid-cols-2 { grid-template-columns: 1fr !important; }
-  .lti-shell main .text-2xl { font-size: 1.35rem !important; }
-  .lti-shell main .text-xl { font-size: 1.15rem !important; }
+  html { font-size: 14px; }
+  body { font-size: 14px; }
+  .lti-shell main { padding: .75rem .75rem 5rem !important; }
+  .lti-shell main .rounded-2xl { border-radius: .8rem; }
+  .lti-shell main .text-2xl { font-size: 1.3rem !important; }
+  .lti-shell main .text-xl { font-size: 1.1rem !important; }
+  .lti-shell main .p-8 { padding: .95rem !important; }
+  .lti-shell main .p-6 { padding: .9rem !important; }
+  .lti-shell main .p-5 { padding: .8rem !important; }
+  .lti-shell main .gap-6 { gap: .9rem !important; }
+  .lti-shell main .gap-4 { gap: .7rem !important; }
   .max-w-md.w-full.rounded-2xl.p-8,
   .max-w-lg.mx-auto.bg-white.p-8,
-  .max-w-lg.mx-auto.p-8.bg-white { padding: 1.25rem !important; }
+  .max-w-lg.mx-auto.p-8.bg-white { padding: 1.1rem !important; }
+  .lti-connection-bar { font-size: .72rem !important; gap: .45rem !important; }
 }
 
 @media(prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
