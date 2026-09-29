@@ -70,7 +70,16 @@ try{
  const evaluationSource=readFileSync(new URL('../ResearchEvaluation.tsx',import.meta.url),'utf8');
  assert.match(evaluationSource,/着眼点・独創性/);
  assert.match(evaluationSource,/高校生ならではの柔軟な発想/);
- assert.match(detailSource,/showEvaluation&&result&&<ResearchEvaluation/);
+ assert.match(detailSource,/result\?\.evaluation&&<ResearchEvaluation value=\{result\.evaluation\} showChart=\{showEvaluation\}/);
+ assert.match(detailSource,/大きく表示/);
+ assert.match(detailSource,/AI Research Insight 拡大表示/);
+ assert.match(detailSource,/xl:grid-cols-\[minmax\(0,1\.4fr\)_minmax\(440px,1fr\)\]/);
+ assert.match(evaluationSource,/showChart=true/);
+ assert.match(evaluationSource,/\{showChart&&<>/);
+ assert.match(evaluationSource,/評価理由・良い点/);
+ assert.match(evaluationSource,/本文の根拠（ページ・節など）/);
+ assert.match(evaluationSource,/さらに確かめたい点/);
+ assert.match(evaluationSource,/v\[k\]\?\.trim\(\)\|\|'記載なし'/);
  assert.match(librarySource,/loadPaperEngagement/);
  assert.match(librarySource,/bookmarksOnly/);
  assert.match(librarySource,/ブックマーク/);
