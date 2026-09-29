@@ -89,6 +89,8 @@ type NoticeItem = {
   title: string;
   date: string;
   content: string;
+  targetType?: 'all' | 'specific';
+  targetSchoolIds?: string[];
 };
 
 const safeExternalUrl = (url?: string) => {
@@ -1021,6 +1023,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   // 【要件③用】LTI運営側：お知らせ管理用ステート
   const [newNoticeTitle, setNewNoticeTitle] = useState('');
   const [newNoticeContent, setNewNoticeContent] = useState('');
+  const [newNoticeTargetType, setNewNoticeTargetType] = useState<'all' | 'specific'>('all');
+  const [newNoticeTargetSchools, setNewNoticeTargetSchools] = useState<string[]>([]);
   const [editingNoticeId, setEditingNoticeId] = useState<number | null>(null);
   const [noticeMessage, setNoticeMessage] = useState('');
 
@@ -1028,27 +1032,52 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setEditingNoticeId(null);
     setNewNoticeTitle('');
     setNewNoticeContent('');
+    setNewNoticeTargetType('all');
+    setNewNoticeTargetSchools([]);
   };
 
   const handleStartEditNotice = (n: NoticeItem) => {
     setEditingNoticeId(n.id);
     setNewNoticeTitle(n.title);
     setNewNoticeContent(n.content);
+    setNewNoticeTargetType(n.targetType === 'specific' ? 'specific' : 'all');
+    setNewNoticeTargetSchools(n.targetSchoolIds || []);
     window.scrollTo(0, 0);
   };
 
   const handleSaveNotice = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNoticeTitle.trim()) return;
+    if (newNoticeTargetType === 'specific' && newNoticeTargetSchools.length === 0) {
+      setNoticeMessage('学校指定で配信する場合は、対象校を1校以上選択してください。');
+      return;
+    }
     const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '/');
+    const audience = {
+      targetType: newNoticeTargetType,
+      targetSchoolIds: newNoticeTargetType === 'specific' ? newNoticeTargetSchools : undefined,
+    } as const;
 
     if (editingNoticeId !== null) {
-      setNotices(notices.map(n => n.id === editingNoticeId ? { ...n, title: newNoticeTitle, content: newNoticeContent } : n));
+      setNotices(notices.map(n => n.id === editingNoticeId ? {
+        ...n,
+        title: newNoticeTitle.trim(),
+        content: newNoticeContent.trim() || '詳細はありません。',
+        ...audience,
+      } : n));
       setNoticeMessage('お知らせを更新しました！');
     } else {
-      const newNotice: NoticeItem = { id: Date.now(), title: newNoticeTitle, date: todayStr, content: newNoticeContent || '詳細はありません。' };
+      const newNotice: NoticeItem = {
+        id: Date.now(),
+        title: newNoticeTitle.trim(),
+        date: todayStr,
+        content: newNoticeContent.trim() || '詳細はありません。',
+        ...audience,
+      };
       setNotices([newNotice, ...notices]);
-      setNoticeMessage('お知らせを配信しました！生徒・教員のホーム画面に表示されます。');
+      setNoticeMessage(newNoticeTargetType === 'specific'
+        ? '指定した学校にお知らせを配信しました！'
+        : '全学校にお知らせを配信しました！');
     }
     resetNoticeForm();
     setTimeout(() => setNoticeMessage(''), 4000);
@@ -2444,7 +2473,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                 <div className="space-y-6 max-w-3xl">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                     <h2 className="text-lg font-bold text-gray-900">お知らせの配信管理</h2>
-                    <p className="text-xs font-medium text-gray-500">ここで発信したお知らせは、全学校の生徒・教員のホーム画面に表示されます。</p>
+                    <p className="text-xs font-medium text-gray-500">全学校への一斉配信、または特定の学校だけを指定して、生徒・教員のホーム画面にお知らせを配信できます。</p>
                   </div>
 
                   {noticeMessage && (
@@ -2488,6 +2517,66 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       ></textarea>
                     </div>
 
+                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                      <label className="text-xs font-bold text-gray-700">配信範囲</label>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-800">
+                          <input
+                            type="radio"
+                            name="noticeTargetType"
+                            value="all"
+                            checked={newNoticeTargetType === 'all'}
+                            onChange={() => setNewNoticeTargetType('all')}
+                            className="text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <Globe className="w-4 h-4 text-emerald-600" /> 全学校に一斉配信
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-800">
+                          <input
+                            type="radio"
+                            name="noticeTargetType"
+                            value="specific"
+                            checked={newNoticeTargetType === 'specific'}
+                            onChange={() => setNewNoticeTargetType('specific')}
+                            className="text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <LockKeyhole className="w-4 h-4 text-amber-600" /> 学校を指定して配信
+                        </label>
+                      </div>
+
+                      {newNoticeTargetType === 'specific' && (
+                        <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200/80 space-y-2 mt-2">
+                          <p className="text-xs font-bold text-amber-900">配信する学校を選択してください：</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {registeredSchoolIds.map(sId => {
+                              const schoolName = cloud.schools.find(s => s.id === sId)?.name || sId;
+                              return (
+                                <label key={sId} className="flex items-center gap-2 text-xs font-medium text-gray-800 cursor-pointer bg-white p-2.5 rounded-lg border border-amber-200">
+                                  <input
+                                    type="checkbox"
+                                    value={sId}
+                                    checked={newNoticeTargetSchools.includes(sId)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setNewNoticeTargetSchools([...newNoticeTargetSchools, sId]);
+                                      } else {
+                                        setNewNoticeTargetSchools(newNoticeTargetSchools.filter(id => id !== sId));
+                                      }
+                                    }}
+                                    className="rounded text-indigo-600"
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block font-bold text-gray-900 truncate">{schoolName}</span>
+                                    <span className="block font-mono text-[10px] text-gray-400 truncate">{sId}</span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     <button
                       type="submit"
                       className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center gap-2"
@@ -2505,7 +2594,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         {notices.map(n => (
                           <div key={n.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-start justify-between gap-4">
                             <div className="space-y-1 flex-1">
-                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-mono text-gray-400">{n.date}</span>
+                                {(n.targetType === 'specific')
+                                  ? <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700"><LockKeyhole className="w-3 h-3" /> {n.targetSchoolIds?.map(id => cloud.schools.find(s => s.id === id)?.name || id).join('・')}</span>
+                                  : <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700"><Globe className="w-3 h-3" /> 全校</span>}
+                              </div>
                               <h4 className="font-bold text-gray-900 text-sm">{n.title}</h4>
                               <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
                             </div>
@@ -2772,6 +2866,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     // 教員側で閲覧可能なコンテスト（一斉公開 または 自校が指定された公開）
     const visibleContests = contests
       .filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)))
+      .sort((a, b) => Number(b.targetType === 'specific') - Number(a.targetType === 'specific'));
+
+    // お知らせは「全校」または自校指定のみ表示。自校指定は全校向けより上に出す。
+    const visibleNotices = notices
+      .filter(n => n.targetType !== 'specific' || Boolean(n.targetSchoolIds?.includes(schoolId)))
       .sort((a, b) => Number(b.targetType === 'specific') - Number(a.targetType === 'specific'));
 
     const handleTeacherProfileUpdate = async (e: React.FormEvent) => {
@@ -3116,11 +3215,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                     <h3 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">📢 LTI運営からのお知らせ</h3>
-                    {notices.length === 0 ? (
+                    {visibleNotices.length === 0 ? (
                       <p className="text-xs text-gray-400 italic">現在お知らせはありません。</p>
                     ) : (
                       <div className="space-y-3">
-                        {notices.map(n => (
+                        {visibleNotices.map(n => (
                           <div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="flex items-center justify-between mb-1">
                               <h4 className="font-bold text-gray-900 text-xs">{n.title}</h4>
@@ -4082,6 +4181,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       .filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)))
       .sort((a, b) => Number(b.targetType === 'specific') - Number(a.targetType === 'specific'));
 
+    // お知らせは「全校」または自校指定のみ表示。自校指定は全校向けより上に出す。
+    const visibleNotices = notices
+      .filter(n => n.targetType !== 'specific' || Boolean(n.targetSchoolIds?.includes(schoolId)))
+      .sort((a, b) => Number(b.targetType === 'specific') - Number(a.targetType === 'specific'));
+
     // 先生から送られたAI添削フィードバック（自分宛のもののみ、新しい順）
     const myFeedbackMessages = studentFeedbackMessages
       .filter(m => m.schoolId === schoolId && m.studentId === currentStudentId)
@@ -4250,11 +4354,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                     <h3 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">📢 LTI運営からのお知らせ</h3>
-                    {notices.length === 0 ? (
+                    {visibleNotices.length === 0 ? (
                       <p className="text-xs text-gray-400 italic">現在お知らせはありません。</p>
                     ) : (
                       <div className="space-y-3">
-                        {notices.map(n => (
+                        {visibleNotices.map(n => (
                           <div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="flex items-center justify-between mb-1">
                               <h4 className="font-bold text-gray-900 text-xs">{n.title}</h4>
