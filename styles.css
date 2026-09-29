@@ -35,4 +35,137 @@ tbody tr:hover { background: #f8fafc; }
  .lti-shell main { width: 100%; padding: 1rem; }
  .account-manager { padding: 1rem; }
 }
+
+/* Mobile layout: keep every role usable on phones without horizontal page overflow. */
+html, body, #root { width: 100%; max-width: 100%; min-height: 100%; overflow-x: hidden; }
+img, video, canvas { max-width: 100%; height: auto; }
+input, select, textarea { min-width: 0; }
+.lti-shell { width: 100%; max-width: 100vw; }
+.lti-shell main, .lti-shell main > div { min-width: 0; max-width: 100%; }
+
+@media(max-width: 900px) {
+  .lti-shell { display: block !important; min-height: 100dvh; }
+  .lti-shell > div.flex-1 { width: 100%; min-width: 0; min-height: 100dvh; }
+
+  /* Sidebar becomes a real mobile drawer. */
+  .lti-sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0;
+    z-index: 70;
+    display: flex;
+    width: min(88vw, 320px) !important;
+    height: 100dvh !important;
+    max-height: none !important;
+    overflow-y: auto;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 0;
+    box-shadow: 18px 0 48px #0f172a2b;
+  }
+  .lti-sidebar.hidden { display: none !important; }
+  .lti-sidebar.flex { display: flex !important; }
+  .lti-sidebar > div:first-child { min-height: 56px; height: auto !important; padding: .75rem 1rem !important; }
+  .lti-sidebar nav button { min-height: 44px; }
+
+  /* Compact top bar: hamburger + search/current location, avatar only on the right. */
+  .lti-shell > div.flex-1 > header {
+    min-height: 56px;
+    height: auto !important;
+    padding: .55rem .75rem !important;
+    gap: .5rem;
+  }
+  .lti-shell > div.flex-1 > header > div:first-child {
+    flex: 1 1 auto;
+    width: auto !important;
+    min-width: 0;
+    gap: .5rem !important;
+  }
+  .lti-shell > div.flex-1 > header > div:first-child input { min-width: 0; }
+  .lti-shell > div.flex-1 > header > div:last-child {
+    flex: 0 0 auto;
+    gap: .25rem !important;
+  }
+  .lti-shell > div.flex-1 > header > div:last-child > div {
+    border-left: 0 !important;
+    padding-left: .25rem !important;
+    gap: .4rem !important;
+  }
+  .lti-shell > div.flex-1 > header > div:last-child > div > div:last-child { display: none; }
+  .lti-shell > div.flex-1 > header .text-sm { font-size: .8125rem; }
+  .lti-shell > div.flex-1 > header .px-3 { padding-left: .55rem; padding-right: .55rem; }
+
+  .lti-shell main {
+    width: 100%;
+    padding: .75rem !important;
+    overflow-x: hidden !important;
+  }
+  .lti-shell main > div { gap: .75rem; }
+  .lti-shell main .space-y-8 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
+  .lti-shell main .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: .85rem; }
+
+  /* Reduce desktop card padding on narrow screens. */
+  .lti-shell main .p-8 { padding: 1rem !important; }
+  .lti-shell main .p-6 { padding: 1rem !important; }
+  .lti-shell main .p-5 { padding: .9rem !important; }
+  .lti-shell main .px-8 { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .lti-shell main .px-6 { padding-left: .9rem !important; padding-right: .9rem !important; }
+  .lti-shell main h1 { font-size: 1.25rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .lti-shell main h2 { line-height: 1.5; overflow-wrap: anywhere; }
+  .lti-shell main p, .lti-shell main span, .lti-shell main label { overflow-wrap: anywhere; }
+
+  /* Forms and actions should fit one column first. */
+  .lti-shell main input:not([type=checkbox]):not([type=radio]),
+  .lti-shell main select,
+  .lti-shell main textarea { width: 100%; max-width: 100%; }
+  .lti-shell main .max-w-sm { max-width: 100% !important; }
+  .lti-shell main button { max-width: 100%; }
+  .lti-shell main .grid-cols-2 { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+
+  /* Existing desktop tables remain tables, but scroll inside themselves instead of breaking the page. */
+  .lti-shell table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    background: white;
+  }
+  .lti-shell table > thead,
+  .lti-shell table > tbody {
+    display: table;
+    width: 100%;
+    min-width: 680px;
+    table-layout: auto;
+  }
+  .lti-shell th, .lti-shell td { padding: .65rem .75rem !important; }
+  .lti-shell td p { white-space: normal; min-width: 9rem; }
+
+  /* Dialogs use the available phone viewport and keep controls reachable. */
+  .fixed.inset-0 > .bg-white.rounded-2xl,
+  .fixed.inset-0 > section.bg-white {
+    max-width: calc(100vw - 1rem) !important;
+    max-height: calc(100dvh - 1rem) !important;
+    padding: 1rem !important;
+  }
+
+  /* Cards with title + badge/actions should be allowed to wrap. */
+  .lti-shell main .bg-white.flex.items-center.justify-between,
+  .lti-shell main .bg-white.flex.items-start.justify-between {
+    flex-wrap: wrap;
+    gap: .75rem;
+  }
+}
+
+@media(max-width: 520px) {
+  body { font-size: 15px; }
+  .lti-shell main { padding: .625rem !important; }
+  .lti-shell main .rounded-2xl { border-radius: .875rem; }
+  .lti-shell main .grid-cols-2 { grid-template-columns: 1fr !important; }
+  .lti-shell main .text-2xl { font-size: 1.35rem !important; }
+  .lti-shell main .text-xl { font-size: 1.15rem !important; }
+  .max-w-md.w-full.rounded-2xl.p-8,
+  .max-w-lg.mx-auto.bg-white.p-8,
+  .max-w-lg.mx-auto.p-8.bg-white { padding: 1.25rem !important; }
+}
+
 @media(prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
