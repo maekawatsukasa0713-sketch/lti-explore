@@ -9,7 +9,7 @@ const PROD_HOSTS = new Set([
 ]);
 
 const browserHost = typeof window !== 'undefined' ? window.location.hostname : '';
-const explicitEnv = import.meta.env.VITE_LTI_ENV;
+const explicitEnv = (import.meta as any).env?.VITE_LTI_ENV as string | undefined;
 export const APP_ENV: 'production' | 'staging' =
   explicitEnv === 'production' || (explicitEnv !== 'staging' && PROD_HOSTS.has(browserHost))
     ? 'production'
