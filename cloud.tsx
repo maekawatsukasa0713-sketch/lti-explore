@@ -1,7 +1,7 @@
 import type {FeatureSettings} from './SchoolFeatures';
 import {PasswordInput} from './PasswordInput';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import {Building2,ShieldCheck,ChevronRight,ArrowLeft,User,Lock} from 'lucide-react';
+import {Building2,ShieldCheck,ChevronRight,ChevronLeft,ArrowLeft,User,Lock,Download,Maximize2,X,Minus,Plus,FileText} from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import {supabase,recoveryOnArrival} from './client';
 import {APP_URL} from './supabase-config';
@@ -40,11 +40,72 @@ export async function saveMyProfile(name:string,password:string) {
  const {error}=await supabase.from('lti_profiles').update({name:name.trim()}).eq('id',user.id);if(error)throw error;
 }
 export {uploadDocument as uploadPdf} from './document-upload';
-export function PdfView({path}:{path?:string}) {
- const [url,setUrl]=useState('');const [text,setText]=useState('');const [error,setError]=useState('');const [full,setFull]=useState(false);
- useEffect(()=>{let alive=true;let objectUrl='';setUrl('');setText('');setError('');if(path)(async()=>{try{const {data,error}=await supabase.storage.from('lti-documents').download(path);if(error)throw error;objectUrl=URL.createObjectURL(data);if(path.endsWith('.docx')){const mammoth=await import('mammoth');const result=await mammoth.extractRawText({arrayBuffer:await data.arrayBuffer()});if(alive)setText(result.value);}if(alive)setUrl(objectUrl);else URL.revokeObjectURL(objectUrl);}catch{if(alive)setError('添付を取得できませんでした。通信と閲覧権限を確認してください。');}})();return()=>{alive=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};},[path]);
+function PdfFullscreenViewer({file,url,label,onClose}:{file:Blob;url:string;label:string;onClose:()=>void}) {
+ const canvasRef=useRef<HTMLCanvasElement|null>(null);
+ const [pdf,setPdf]=useState<any>(null);
+ const [page,setPage]=useState(1);
+ const [pages,setPages]=useState(0);
+ const [zoom,setZoom]=useState(1.2);
+ const [loading,setLoading]=useState(true);
+ const [error,setError]=useState('');
+ useEffect(()=>{let alive=true;let task:any=null;(async()=>{try{const pdfjs=await import('pdfjs-dist');pdfjs.GlobalWorkerOptions.workerSrc=new URL('pdfjs-dist/build/pdf.worker.min.mjs',import.meta.url).toString();task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false});const doc=await task.promise;if(!alive){await doc.destroy();return;}setPdf(doc);setPages(doc.numPages);setPage(1);}catch(e){if(alive)setError(e instanceof Error?e.message:'PDFを開けませんでした。');}finally{if(alive)setLoading(false);}})();return()=>{alive=false;if(task?.destroy)void task.destroy();};},[file]);
+ useEffect(()=>{if(!pdf||!canvasRef.current)return;let cancelled=false;let renderTask:any;(async()=>{try{setLoading(true);const pdfPage=await pdf.getPage(page);if(cancelled)return;const viewport=pdfPage.getViewport({scale:zoom});const canvas=canvasRef.current;if(!canvas)return;const ratio=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.floor(viewport.width*ratio);canvas.height=Math.floor(viewport.height*ratio);canvas.style.width=viewport.width+'px';canvas.style.height=viewport.height+'px';const ctx=canvas.getContext('2d');if(!ctx)return;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);renderTask=pdfPage.render({canvasContext:ctx,viewport,transform:ratio===1?undefined:[ratio,0,0,ratio,0,0]});await renderTask.promise;pdfPage.cleanup();}catch(e:any){if(!cancelled&&e?.name!=='RenderingCancelledException')setError('PDFページを表示できませんでした。');}finally{if(!cancelled)setLoading(false);}})();return()=>{cancelled=true;if(renderTask?.cancel)renderTask.cancel();};},[pdf,page,zoom]);
+ useEffect(()=>{const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();else if(e.key==='ArrowLeft')setPage(p=>Math.max(1,p-1));else if(e.key==='ArrowRight')setPage(p=>Math.min(pages||p,p+1));};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[onClose,pages]);
+ return <div className="fixed inset-0 z-[120] bg-slate-950 text-white flex flex-col" role="dialog" aria-modal="true" aria-label="論文PDF 全画面ビューア">
+  <header className="h-16 shrink-0 border-b border-white/10 bg-slate-900/95 backdrop-blur flex items-center gap-4 px-4 md:px-6">
+   <div className="min-w-0 flex items-center gap-3 flex-1">
+    <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0"><FileText className="w-5 h-5"/></div>
+    <div className="min-w-0"><p className="text-[11px] font-bold tracking-widest text-slate-400">LTI RESEARCH VIEWER</p><p className="text-sm font-bold truncate">{label}</p></div>
+   </div>
+   <div className="hidden sm:flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1">
+    <button type="button" aria-label="前のページ" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-30"><ChevronLeft className="w-4 h-4"/></button>
+    <div className="px-2 text-xs font-bold tabular-nums min-w-20 text-center">{page} / {pages||'—'}</div>
+    <button type="button" aria-label="次のページ" disabled={!pages||page>=pages} onClick={()=>setPage(p=>Math.min(pages,p+1))} className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-30"><ChevronRight className="w-4 h-4"/></button>
+   </div>
+   <div className="hidden md:flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1">
+    <button type="button" aria-label="縮小" onClick={()=>setZoom(z=>Math.max(.6,Math.round((z-.1)*10)/10))} className="p-2 rounded-lg hover:bg-white/10"><Minus className="w-4 h-4"/></button>
+    <span className="px-2 text-xs font-bold tabular-nums min-w-14 text-center">{Math.round(zoom*100)}%</span>
+    <button type="button" aria-label="拡大" onClick={()=>setZoom(z=>Math.min(2.4,Math.round((z+.1)*10)/10))} className="p-2 rounded-lg hover:bg-white/10"><Plus className="w-4 h-4"/></button>
+   </div>
+   <a href={url} download="research-paper.pdf" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-bold"><Download className="w-4 h-4"/><span className="hidden md:inline">ダウンロード</span></a>
+   <button type="button" onClick={onClose} className="inline-flex items-center gap-2 rounded-xl bg-white text-slate-900 hover:bg-slate-100 px-3 py-2 text-xs font-bold"><X className="w-4 h-4"/><span className="hidden sm:inline">閉じる</span></button>
+  </header>
+  <div className="sm:hidden shrink-0 border-b border-white/10 bg-slate-900 px-4 py-2 flex items-center justify-between">
+   <button type="button" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="p-2 rounded-lg bg-white/5 disabled:opacity-30"><ChevronLeft className="w-4 h-4"/></button>
+   <span className="text-xs font-bold tabular-nums">{page} / {pages||'—'}</span>
+   <button type="button" disabled={!pages||page>=pages} onClick={()=>setPage(p=>Math.min(pages,p+1))} className="p-2 rounded-lg bg-white/5 disabled:opacity-30"><ChevronRight className="w-4 h-4"/></button>
+  </div>
+  <main className="flex-1 overflow-auto bg-slate-800/80 p-3 md:p-8">
+   <div className="min-h-full flex justify-center items-start">
+    <div className="relative bg-white shadow-2xl ring-1 ring-black/20 rounded-sm overflow-hidden max-w-full">
+     {error?<div className="w-[min(90vw,800px)] min-h-[60vh] flex items-center justify-center p-8 text-slate-700 text-sm">{error}</div>:<canvas ref={canvasRef} className="block max-w-full h-auto"/>}
+     {loading&&!error&&<div className="absolute inset-0 bg-white/80 flex items-center justify-center text-slate-500 text-sm font-bold">PDFを読み込み中…</div>}
+    </div>
+   </div>
+  </main>
+  <footer className="shrink-0 border-t border-white/10 bg-slate-900/95 px-4 py-2 flex items-center justify-center gap-4 text-[11px] text-slate-400">
+   <span>← → でページ移動</span><span>Escで閉じる</span><span className="hidden sm:inline">拡大・縮小しても原稿データは変更されません</span>
+  </footer>
+ </div>;
+}
+
+export function PdfView({path,label}:{path?:string;label?:string}) {
+ const [url,setUrl]=useState('');const [file,setFile]=useState<Blob|null>(null);const [text,setText]=useState('');const [error,setError]=useState('');const [full,setFull]=useState(false);
+ useEffect(()=>{let alive=true;let objectUrl='';setUrl('');setFile(null);setText('');setError('');if(path)(async()=>{try{const {data,error}=await supabase.storage.from('lti-documents').download(path);if(error)throw error;objectUrl=URL.createObjectURL(data);if(path.endsWith('.docx')){const mammoth=await import('mammoth');const result=await mammoth.extractRawText({arrayBuffer:await data.arrayBuffer()});if(alive)setText(result.value);}if(alive){setFile(data);setUrl(objectUrl);}else URL.revokeObjectURL(objectUrl);}catch{if(alive)setError('添付を取得できませんでした。通信と閲覧権限を確認してください。');}})();return()=>{alive=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};},[path]);
  if(!path)return null;
- return <section className={full?'fixed inset-0 z-[110] bg-white p-4 overflow-auto':'space-y-2'}><div className="flex gap-4 p-2"><button type="button" onClick={()=>setFull(!full)} className="text-sm underline">{full?'全画面を閉じる':'全画面表示'}</button>{url&&<a href={url} download={path.endsWith('.docx')?'document.docx':'document.pdf'} className="text-sm underline">ダウンロード</a>}</div>{error?<p role="alert">{error}</p>:!url?<p>添付を読み込み中…</p>:path.endsWith('.docx')?<><p className="text-xs text-gray-500">Wordの本文表示です。図表・書式はダウンロードした原稿で確認してください。</p><pre className="whitespace-pre-wrap font-sans p-6 text-sm">{text||'抽出できる本文がありません。原稿をダウンロードしてください。'}</pre></>:<iframe src={url} title="添付PDF" className={`w-full border rounded-xl ${full?'h-[88vh]':'h-[75vh] min-h-[600px]'}`}/>}</section>;
+ const isWord=path.endsWith('.docx');
+ const displayLabel=label?.trim()||'研究論文';
+ return <section className="space-y-3">
+  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+   <p className="min-w-0 truncate text-xs font-bold text-slate-600">{displayLabel}</p>
+   <div className="flex items-center gap-2">
+    <button type="button" disabled={!url||!!error} onClick={()=>setFull(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40"><Maximize2 className="w-4 h-4"/>全画面表示</button>
+    {url&&<a href={url} download={isWord?'document.docx':'research-paper.pdf'} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100"><Download className="w-4 h-4"/>ダウンロード</a>}
+   </div>
+  </div>
+  {error?<p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</p>:!url?<div className="min-h-40 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-sm text-slate-500">添付を読み込み中…</div>:isWord?<><p className="text-xs text-gray-500">Wordの本文表示です。図表・書式はダウンロードした原稿で確認してください。</p><pre className="whitespace-pre-wrap font-sans p-6 text-sm bg-white border rounded-xl">{text||'抽出できる本文がありません。原稿をダウンロードしてください。'}</pre></>:<iframe src={url} title="添付PDF" className="w-full border border-slate-200 rounded-xl h-[75vh] min-h-[600px] bg-white"/>}
+  {full&&file&&(isWord?<div className="fixed inset-0 z-[120] bg-slate-950 text-white flex flex-col" role="dialog" aria-modal="true"><header className="h-16 border-b border-white/10 bg-slate-900 flex items-center justify-between px-5"><div className="min-w-0"><p className="text-[11px] tracking-widest text-slate-400 font-bold">LTI DOCUMENT VIEWER</p><p className="text-sm font-bold truncate">{displayLabel}</p></div><div className="flex gap-2"><a href={url} download="document.docx" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold"><Download className="w-4 h-4"/>ダウンロード</a><button type="button" onClick={()=>setFull(false)} className="inline-flex items-center gap-2 rounded-xl bg-white text-slate-900 px-3 py-2 text-xs font-bold"><X className="w-4 h-4"/>閉じる</button></div></header><main className="flex-1 overflow-auto bg-slate-800 p-4 md:p-8"><article className="mx-auto max-w-4xl min-h-full bg-white text-slate-800 shadow-2xl rounded-xl p-6 md:p-10"><pre className="whitespace-pre-wrap font-sans text-sm leading-7">{text||'抽出できる本文がありません。'}</pre></article></main></div>:<PdfFullscreenViewer file={file} url={url} label={displayLabel} onClose={()=>setFull(false)}/>)}
+ </section>;
 }
 export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<void>)=>React.ReactNode}) {
  const [session,setSession]=useState<Session|null>(null);const [initial,setInitial]=useState(true);
