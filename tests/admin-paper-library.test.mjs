@@ -75,7 +75,11 @@ try{
  assert.match(detailSource,/AI Research Insight 拡大表示/);
  assert.match(detailSource,/xl:grid-cols-\[minmax\(0,1\.4fr\)_minmax\(440px,1fr\)\]/);
  assert.match(evaluationSource,/showChart=true/);
+ assert.match(evaluationSource,/showScores=true/);
  assert.match(evaluationSource,/\{showChart&&<>/);
+ assert.match(evaluationSource,/showScores&&<p/);
+ assert.match(evaluationSource,/:showScores\?<span/);
+ assert.match(detailSource,/showScores=\{showEvaluation\}/);
  assert.match(evaluationSource,/評価理由・良い点/);
  assert.match(evaluationSource,/本文の根拠（ページ・節など）/);
  assert.match(evaluationSource,/さらに確かめたい点/);
