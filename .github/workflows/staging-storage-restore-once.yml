@@ -1,0 +1,99 @@
+name: Restore staging live Storage from isolated backup
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/staging-storage-restore-once.yml'
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_ACCESS_KEY_ID: ${{ secrets.TEST_S3_ACCESS_KEY_ID }}
+      STAGING_SECRET_ACCESS_KEY: ${{ secrets.TEST_S3_SECRET_ACCESS_KEY }}
+      STAGING_ENDPOINT: https://bvjjnzhhxieyxkeorurb.storage.supabase.co/storage/v1/s3
+      SOURCE_BUCKET: lti-production-backup
+      DEST_BUCKET: lti-documents
+      AWS_REGION: ap-southeast-1
+    steps:
+      - name: Check staging credentials
+        shell: bash
+        run: |
+          test -n "$STAGING_ACCESS_KEY_ID"
+          test -n "$STAGING_SECRET_ACCESS_KEY"
+
+      - name: Install boto3
+        run: python -m pip install --quiet boto3
+
+      - name: Restore backup objects into staging live bucket
+        run: |
+          python - <<'PY'
+          import os
+          import boto3
+          import shutil
+          import tempfile
+          from botocore.config import Config
+
+          cfg = Config(signature_version='s3v4', s3={'addressing_style': 'path'})
+          s3 = boto3.client(
+              's3',
+              endpoint_url=os.environ['STAGING_ENDPOINT'],
+              aws_access_key_id=os.environ['STAGING_ACCESS_KEY_ID'],
+              aws_secret_access_key=os.environ['STAGING_SECRET_ACCESS_KEY'],
+              region_name=os.environ['AWS_REGION'],
+              config=cfg,
+          )
+
+          source_bucket = os.environ['SOURCE_BUCKET']
+          dest_bucket = os.environ['DEST_BUCKET']
+          copied = 0
+          skipped = 0
+          failed = []
+
+          paginator = s3.get_paginator('list_objects_v2')
+          for page in paginator.paginate(Bucket=source_bucket):
+              for item in page.get('Contents', []):
+                  key = item['Key']
+                  source_size = int(item['Size'])
+                  try:
+                      try:
+                          existing = s3.head_object(Bucket=dest_bucket, Key=key)
+                          if int(existing.get('ContentLength', -1)) == source_size:
+                              skipped += 1
+                              continue
+                      except Exception:
+                          pass
+
+                      obj = s3.get_object(Bucket=source_bucket, Key=key)
+                      extra_args = {
+                          'ContentType': obj.get('ContentType', 'application/octet-stream'),
+                      }
+                      if obj.get('CacheControl'):
+                          extra_args['CacheControl'] = obj['CacheControl']
+                      if obj.get('ContentDisposition'):
+                          extra_args['ContentDisposition'] = obj['ContentDisposition']
+                      if obj.get('Metadata'):
+                          extra_args['Metadata'] = obj['Metadata']
+
+                      with tempfile.TemporaryFile() as tmp:
+                          shutil.copyfileobj(obj['Body'], tmp, length=8 * 1024 * 1024)
+                          obj['Body'].close()
+                          tmp.seek(0)
+                          s3.upload_fileobj(
+                              tmp,
+                              dest_bucket,
+                              key,
+                              ExtraArgs=extra_args,
+                          )
+                      copied += 1
+                  except Exception as exc:
+                      failed.append((key, str(exc)))
+
+          print(f'copied={copied} skipped={skipped} failed={len(failed)}')
+          if failed:
+              for key, error in failed[:20]:
+                  print(f'FAILED {key}: {error}')
+              raise SystemExit(1)
+          PY
