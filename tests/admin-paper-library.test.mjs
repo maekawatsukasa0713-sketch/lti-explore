@@ -111,6 +111,18 @@ try{
  assert.match(appSource,/公式・申込URL/);
  assert.match(appSource,/詳細・申込ページ/);
  assert.match(appSource,/url\?: string/);
+ assert.match(appSource,/const formatDisplayDateTime/);
+ assert.match(appSource,/timeZone: 'Asia\/Tokyo'/);
+ assert.match(appSource,/formatDisplayDateTime\(sub\.submittedAt\)/);
+ assert.match(appSource,/name: '課題管理'/);
+ assert.match(appSource,/teacherFeatureTab=\(tab:string\)=>tab==='課題管理'\?'進捗管理':tab/);
+ assert.match(appSource,/currentTab === '課題管理'/);
+ assert.doesNotMatch(appSource,/currentTab === '進捗管理'/);
+ assert.match(appSource,/setProgressSelectedAssignId\(assign\.id\);setCurrentTab\('課題管理'\)/);
+ assert.match(appSource,/aria-label="課題を編集"/);
+ assert.match(appSource,/aria-label="課題を削除"/);
+ assert.match(appSource,/出席番号 \{\(student as any\)\.attendance_number \?\? "未設定"\}/);
+
  const cloudSource=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
  assert.match(cloudSource,/https:\/\/lti-explore-six\.vercel\.app\/\?flow=recovery/);
  assert.doesNotMatch(cloudSource,/lti-explore-lab-to-impact\.vercel\.app\/\?flow=recovery/);
