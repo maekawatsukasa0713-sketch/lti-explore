@@ -116,6 +116,9 @@ try{
  assert.doesNotMatch(detailSource,/なぜこのテーマに注目したのか/);
  assert.doesNotMatch(detailSource,/どのように調べ、何が見えてきたのか/);
  const appSource=readFileSync(new URL('../App.tsx',import.meta.url),'utf8');
+const configSource=readFileSync(new URL('../supabase-config.ts',import.meta.url),'utf8');
+const cloudSourceForEnv=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
+
  assert.match(appSource,/生徒・教員に配信している内容を運営側でも確認できます/);
  assert.match(appSource,/お知らせ管理を開く/);
  assert.match(appSource,/公式・申込URL/);
@@ -126,6 +129,17 @@ try{
  assert.match(appSource,/formatDisplayDateTime\(sub\.submittedAt\)/);
  assert.match(appSource,/name: '課題管理'/);
  assert.match(appSource,/assignmentStudentQuery/);
+ assert.match(appSource,/attachmentPath\?: string/);
+ assert.match(appSource,/attachmentName\?: string/);
+ assert.match(appSource,/newAssignAttachment/);
+ assert.match(appSource,/attachmentPath = await uploadPdf\(newAssignAttachment/);
+ assert.match(appSource,/先生からの添付資料/);
+ assert.match(appSource,/Supabase Storageに保存され、アプリ更新では消えません/);
+ assert.match(configSource,/bvjjnzhhxieyxkeorurb/);
+ assert.match(configSource,/ozmulwqzybhiekmolvyk/);
+ assert.match(configSource,/APP_ENV: 'production' \| 'staging'/);
+ assert.match(configSource,/PROD_HOSTS/);
+ assert.match(cloudSourceForEnv,/STAGING \/ 試験環境/);
  assert.match(appSource,/placeholder="生徒名で検索（クラス・出席番号でも検索できます）"/);
  assert.match(appSource,/filteredSubmittedList/);
  assert.match(appSource,/filteredUnsubmittedList/);
