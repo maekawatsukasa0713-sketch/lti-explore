@@ -136,7 +136,7 @@ try{
  assert.match(appSource,/teacherFeatureTab=\(tab:string\)=>tab==='課題管理'\?'進捗管理':tab/);
  assert.match(appSource,/currentTab === '課題管理'/);
  assert.doesNotMatch(appSource,/currentTab === '進捗管理'/);
- assert.match(appSource,/setProgressSelectedAssignId\(assign\.id\);setCurrentTab\('課題管理'\)/);
+ assert.match(appSource,/setProgressSelectedAssignId\(assign\.id\);setExpandedSubmissionStudentId\(null\);setCurrentTab\('課題管理'\)/);
  assert.match(appSource,/aria-label="課題を編集"/);
  assert.match(appSource,/aria-label="課題を削除"/);
  assert.match(appSource,/showPicker\?\.\(\)/);
