@@ -1,9 +1,8 @@
 import {supabase} from './client';
 import {SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY} from './supabase-config';
-export const MAX_DOCUMENT_BYTES=50*1024*1024;
 export async function uploadDocument(file:File,onProgress?:(percent:number)=>void):Promise<string>{
  const ext=file.name.split('.').pop()?.toLowerCase();const types:Record<string,string>={pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'};
- if(!ext||!types[ext]||!file.size||file.size>MAX_DOCUMENT_BYTES)throw new Error('PDF・Word（.docx、50MB以内）を選んでください。');
+ if(!ext||!types[ext]||!file.size)throw new Error('PDF・Word（.docx）を選んでください。');
  const {data:{user}}=await supabase.auth.getUser();if(!user)throw new Error('ログインしてください。');
  const path=`${user.id}/${crypto.randomUUID()}.${ext}`;
  if(file.size<=6*1024*1024){const {error}=await supabase.storage.from('lti-documents').upload(path,file,{contentType:types[ext],upsert:false});if(error)throw error;onProgress?.(100);return path;}
