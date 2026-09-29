@@ -1044,6 +1044,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [studentPaperFieldFilter, setStudentPaperFieldFilter] = useState('すべて');
   const [teacherPaperAbstract, setTeacherPaperAbstract] = useState('');
   const [teacherPaperFile, setTeacherPaperFile] = useState<File | null>(null);
+  const [teacherBatchPaperFiles, setTeacherBatchPaperFiles] = useState<File[]>([]);
+  const [teacherBatchSubmitting, setTeacherBatchSubmitting] = useState(false);
+  const [teacherBatchProgress, setTeacherBatchProgress] = useState<Record<string, number>>({});
 
   // AI添削タブ：ドロップ〜送信前のドラフト一覧（送信するまでは端末内のみで保持）
   const [aiReviewItems, setAiReviewItems] = useState<AiReviewItem[]>([]);
@@ -2661,6 +2664,64 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       setTimeout(() => setTeacherApplyMessage(''), 5000);
     };
 
+    const handleTeacherBatchSubmitPapers = async () => {
+      if (teacherBatchSubmitting || teacherBatchPaperFiles.length === 0) return;
+      const files = teacherBatchPaperFiles.filter(file => /\.(pdf|docx)$/i.test(file.name) && file.size > 0);
+      if (!files.length) {
+        setTeacherApplyMessage('PDF・Word（.docx）を選んでください。');
+        return;
+      }
+      setTeacherBatchSubmitting(true);
+      setTeacherBatchProgress(Object.fromEntries(files.map(file => [`${file.name}:${file.size}:${file.lastModified}`, 0])));
+      setTeacherApplyMessage(`${files.length}件をアップロードしています。この画面を開いたままお待ちください。`);
+
+      const now = Date.now();
+      const submittedDate = new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      const created: PublicPaper[] = [];
+      const failed: {file: File; reason: string}[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const progressKey = `${file.name}:${file.size}:${file.lastModified}`;
+        try {
+          const storagePath = await uploadPdf(file, percent => {
+            setTeacherBatchProgress(old => ({...old, [progressKey]: percent}));
+          });
+          created.push({
+            storagePath,
+            id: now + i,
+            title: file.name.replace(/\.(pdf|docx)$/i, ''),
+            schoolName: cloud.schools.find(s => s.id === schoolId)?.name || schoolId,
+            schoolId,
+            submittedByTeacherName: loggedInTeacher.name,
+            submittedByTeacherId: loggedInTeacher.id,
+            field: '未分類',
+            publishedDate: '',
+            views: 0,
+            author: '著者名非公開',
+            status: '承認待ち',
+            submittedDate,
+            fileName: file.name,
+            abstract: ''
+          });
+        } catch (error) {
+          failed.push({file, reason: error instanceof Error ? error.message : 'アップロードに失敗しました。'});
+        }
+      }
+
+      if (created.length) setPapers([...created, ...papers]);
+      setTeacherBatchPaperFiles(failed.map(x => x.file));
+      setTeacherBatchProgress({});
+      setTeacherBatchSubmitting(false);
+      const failedText = failed.length ? ` 失敗 ${failed.length}件：${failed.slice(0,3).map(x => `${x.file.name}（${x.reason}）`).join(' / ')}${failed.length>3?' ほか':''}` : '';
+      setTeacherApplyMessage(`${created.length}件を公開申請として一括送信しました。${failedText}`);
+    };
+
     // ----------------------------------------
     // AI添削（Wordドロップ→AIが修正点・アドバイス・追加実験の方向性を指摘→生徒に送信）
     // Completed sections are retained while this screen is open; retry resumes missing sections.
@@ -3086,7 +3147,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <div className="space-y-1 pointer-events-none">
                           <Upload className="w-8 h-8 text-orange-500 mx-auto" />
                           <p className="text-xs font-bold text-gray-700">クリックしてPDF・Wordを選択</p>
-                          <p className="text-xs text-gray-400">※最大ファイルサイズ: 50MB</p>
+                          <p className="text-xs text-gray-400">大きなファイルは分割アップロードします。</p>
                         </div>
                       </div>
                       {teacherPaperFile && (
@@ -3104,6 +3165,76 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <FileUp className="w-4 h-4" /> LTIへ公開申請を送信する
                     </button>
                   </form>
+
+                  {!editingPaper && (
+                    <section className="bg-white p-6 rounded-2xl border border-orange-200 shadow-sm space-y-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Upload className="w-5 h-5 text-orange-500" />
+                          <h3 className="font-bold text-gray-900">ファイルだけで一括申請</h3>
+                        </div>
+                        <p className="text-xs text-gray-500">タイトル・著者名・分野・要旨を入力せず、PDF・Wordをまとめて申請できます。タイトルはファイル名、著者名は非公開、分野は「未分類」で登録し、LTI運営側で確認・編集できます。</p>
+                      </div>
+
+                      <div className="border-2 border-dashed border-orange-200 hover:border-orange-400 rounded-xl p-6 text-center bg-orange-50/30 transition-colors relative cursor-pointer">
+                        <input
+                          aria-label="公開申請する論文ファイルをまとめて選択"
+                          type="file"
+                          multiple
+                          accept=".pdf,.docx"
+                          disabled={teacherBatchSubmitting}
+                          onChange={(e) => {
+                            const selected = Array.from(e.target.files || []).filter(file => /\.(pdf|docx)$/i.test(file.name) && file.size > 0);
+                            setTeacherBatchPaperFiles(old => {
+                              const known = new Set(old.map(file => `${file.name}:${file.size}:${file.lastModified}`));
+                              return [...old, ...selected.filter(file => !known.has(`${file.name}:${file.size}:${file.lastModified}`))];
+                            });
+                            e.target.value = '';
+                          }}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full disabled:cursor-not-allowed"
+                        />
+                        <div className="space-y-1 pointer-events-none">
+                          <Upload className="w-8 h-8 text-orange-500 mx-auto" />
+                          <p className="text-sm font-bold text-gray-700">PDF・Wordを複数選択 / ドラッグ＆ドロップ</p>
+                          <p className="text-xs text-gray-400">大きなファイルは分割アップロード。複数ファイルを1回の操作で申請できます。</p>
+                        </div>
+                      </div>
+
+                      {teacherBatchPaperFiles.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-bold text-gray-800">選択中 {teacherBatchPaperFiles.length}件</p>
+                            <button type="button" disabled={teacherBatchSubmitting} onClick={()=>setTeacherBatchPaperFiles([])} className="text-xs font-bold text-gray-500 hover:text-rose-600 disabled:opacity-40">すべて解除</button>
+                          </div>
+                          <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                            {teacherBatchPaperFiles.map(file => {
+                              const progressKey = `${file.name}:${file.size}:${file.lastModified}`;
+                              const progress = teacherBatchProgress[progressKey];
+                              return <div key={progressKey} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-gray-800 break-all">{file.name}</p>
+                                    <p className="text-[11px] text-gray-400 mt-0.5">{(file.size/1024/1024).toFixed(1)} MB</p>
+                                  </div>
+                                  {!teacherBatchSubmitting && <button type="button" onClick={()=>setTeacherBatchPaperFiles(old=>old.filter(x=>`${x.name}:${x.size}:${x.lastModified}`!==progressKey))} className="shrink-0 text-xs font-bold text-rose-600">除外</button>}
+                                </div>
+                                {typeof progress === 'number' && <div className="mt-2"><div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden"><div className="h-full bg-orange-400 transition-all" style={{width:`${progress}%`}}/></div><p className="mt-1 text-[11px] text-gray-500">アップロード {progress}%</p></div>}
+                              </div>;
+                            })}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={teacherBatchSubmitting}
+                            onClick={()=>void handleTeacherBatchSubmitPapers()}
+                            className="w-full py-3 px-6 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-colors text-sm shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            <FileUp className="w-4 h-4" />
+                            {teacherBatchSubmitting ? '一括アップロード中…' : `${teacherBatchPaperFiles.length}件を一括で公開申請する`}
+                          </button>
+                        </div>
+                      )}
+                    </section>
+                  )}
 
                   <div className="space-y-3 pt-4">
                     <h3 className="text-sm font-bold text-gray-900">自校からの申請済み論文履歴</h3>
@@ -3421,7 +3552,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <div className="space-y-1 pointer-events-none">
                         <Bot className="w-8 h-8 text-orange-500 mx-auto" />
                         <p className="text-xs font-bold text-gray-700">クリックまたはドラッグ＆ドロップでWord・PDFファイルを選択</p>
-                        <p className="text-xs text-gray-400">※ .docx・.pdf形式、1ファイル50MBまで。8MB超のPDFは抽出テキストをAIに送信します（図表画像は対象外）。</p>
+                        <p className="text-xs text-gray-400">※ .docx・.pdf形式。大きなファイルは分割アップロードします。8MB超のPDFは抽出テキストをAIに送信します（図表画像は対象外）。</p>
                       </div>
                     </div>
                   </div>
