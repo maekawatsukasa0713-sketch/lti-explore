@@ -41,6 +41,8 @@ jobs:
           python - <<'PY'
           import os
           import boto3
+          import shutil
+          import tempfile
           from botocore.config import Config
 
           cfg = Config(signature_version='s3v4', s3={'addressing_style':'path'})
@@ -82,20 +84,28 @@ jobs:
                           pass
 
                       obj = source.get_object(Bucket=source_bucket, Key=key)
-                      kwargs = {
-                          'Bucket': dest_bucket,
-                          'Key': key,
-                          'Body': obj['Body'],
+                      extra_args = {
                           'ContentType': obj.get('ContentType', 'application/octet-stream'),
                       }
                       if obj.get('CacheControl'):
-                          kwargs['CacheControl'] = obj['CacheControl']
+                          extra_args['CacheControl'] = obj['CacheControl']
                       if obj.get('ContentDisposition'):
-                          kwargs['ContentDisposition'] = obj['ContentDisposition']
+                          extra_args['ContentDisposition'] = obj['ContentDisposition']
                       if obj.get('Metadata'):
-                          kwargs['Metadata'] = obj['Metadata']
-                      dest.put_object(**kwargs)
-                      obj['Body'].close()
+                          extra_args['Metadata'] = obj['Metadata']
+
+                      # Supabase returns a non-seekable StreamingBody. Spool one
+                      # object at a time to a seekable temp file before upload.
+                      with tempfile.TemporaryFile() as tmp:
+                          shutil.copyfileobj(obj['Body'], tmp, length=8 * 1024 * 1024)
+                          obj['Body'].close()
+                          tmp.seek(0)
+                          dest.upload_fileobj(
+                              tmp,
+                              dest_bucket,
+                              key,
+                              ExtraArgs=extra_args,
+                          )
                       copied += 1
                   except Exception as exc:
                       failed.append((key, str(exc)))
