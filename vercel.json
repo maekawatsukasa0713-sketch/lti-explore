@@ -8,7 +8,7 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://ozmulwqzybhiekmolvyk.supabase.co; frame-src blob:; object-src blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://ozmulwqzybhiekmolvyk.supabase.co https://ozmulwqzybhiekmolvyk.storage.supabase.co https://bvjjnzhhxieyxkeorurb.supabase.co https://bvjjnzhhxieyxkeorurb.storage.supabase.co wss://ozmulwqzybhiekmolvyk.supabase.co wss://bvjjnzhhxieyxkeorurb.supabase.co; frame-src blob:; object-src blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" },
         { "key": "X-Frame-Options", "value": "DENY" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
