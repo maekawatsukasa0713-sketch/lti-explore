@@ -98,34 +98,62 @@ const safeExternalUrl = (url?: string) => {
 
 function ContestLinkThumbnail({ url, title }: { url?: string; title: string }) {
   const [imageUrl, setImageUrl] = useState('');
-  const [loaded, setLoaded] = useState(false);
   const href = safeExternalUrl(url);
 
   useEffect(() => {
     let alive = true;
+    let probe: HTMLImageElement | null = null;
     setImageUrl('');
-    setLoaded(false);
     if (!href) return;
+
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 7000);
+
     fetch('/api/link-preview?url=' + encodeURIComponent(href), { signal: controller.signal })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!alive) return;
-        setImageUrl(typeof data?.image === 'string' ? data.image : '');
-        setLoaded(true);
+        const candidate = typeof data?.image === 'string' ? data.image : '';
+        if (!candidate) return;
+
+        // Only render the thumbnail after the browser has actually loaded it.
+        // Broken/unsupported preview images simply disappear instead of showing
+        // a broken-image icon or alt text.
+        probe = new Image();
+        probe.onload = () => { if (alive) setImageUrl(candidate); };
+        probe.onerror = () => { if (alive) setImageUrl(''); };
+        probe.src = candidate;
       })
-      .catch(() => { if (alive) setLoaded(true); })
+      .catch(() => {})
       .finally(() => window.clearTimeout(timer));
-    return () => { alive = false; controller.abort(); window.clearTimeout(timer); };
+
+    return () => {
+      alive = false;
+      controller.abort();
+      window.clearTimeout(timer);
+      if (probe) {
+        probe.onload = null;
+        probe.onerror = null;
+      }
+    };
   }, [href]);
 
-  if (!href) return null;
-  if (!loaded) return <div className="h-24 w-32 shrink-0 animate-pulse rounded-xl bg-gray-100" aria-label="リンク画像を読み込み中" />;
-  if (!imageUrl) return null;
+  if (!href || !imageUrl) return null;
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="block h-24 w-32 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-      <img src={imageUrl} alt={title + ' の公式ページ画像'} loading="lazy" className="h-full w-full object-cover" />
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={title + ' の公式ページを開く'}
+      className="block h-24 w-32 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-50"
+    >
+      <img
+        src={imageUrl}
+        alt=""
+        loading="lazy"
+        onError={() => setImageUrl('')}
+        className="h-full w-full object-cover"
+      />
     </a>
   );
 }
