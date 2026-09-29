@@ -95,7 +95,7 @@ input, select, textarea { min-width: 0; }
 
   .lti-shell main {
     width: 100%;
-    padding: .75rem !important;
+    padding: .75rem .75rem 5.5rem !important;
     overflow-x: hidden !important;
   }
   .lti-shell main > div { gap: .75rem; }
@@ -120,22 +120,17 @@ input, select, textarea { min-width: 0; }
   .lti-shell main button { max-width: 100%; }
   .lti-shell main .grid-cols-2 { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
 
-  /* Existing desktop tables remain tables, but scroll inside themselves instead of breaking the page. */
-  .lti-shell table {
-    display: block;
-    width: 100%;
+  /* Keep table column alignment and scroll the table container on phones. */
+  .lti-shell div:has(> table) {
     max-width: 100%;
-    overflow-x: auto;
+    overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
-    white-space: nowrap;
-    background: white;
   }
-  .lti-shell table > thead,
-  .lti-shell table > tbody {
-    display: table;
+  .lti-shell table {
     width: 100%;
     min-width: 680px;
-    table-layout: auto;
+    white-space: nowrap;
+    background: white;
   }
   .lti-shell th, .lti-shell td { padding: .65rem .75rem !important; }
   .lti-shell td p { white-space: normal; min-width: 9rem; }
@@ -178,7 +173,7 @@ input, select, textarea { min-width: 0; }
 
 @media(max-width: 520px) {
   body { font-size: 15px; }
-  .lti-shell main { padding: .625rem !important; }
+  .lti-shell main { padding: .625rem .625rem 5.5rem !important; }
   .lti-shell main .rounded-2xl { border-radius: .875rem; }
   .lti-shell main .grid-cols-2 { grid-template-columns: 1fr !important; }
   .lti-shell main .text-2xl { font-size: 1.35rem !important; }
