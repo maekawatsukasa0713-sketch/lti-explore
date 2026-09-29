@@ -317,6 +317,11 @@ const reconcileMenuOrder = (storedOrder: string[], allNames: string[]): string[]
   return [...known, ...missing];
 };
 
+const prioritizeMenuItems = (order: string[], preferred: string[]): string[] => [
+  ...preferred.filter(name => order.includes(name)),
+  ...order.filter(name => !preferred.includes(name)),
+];
+
 // Helper for local storage
 function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [storedValue, setStoredValue] = useState<T>(() => {
@@ -2971,8 +2976,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const tabMode=(tab:string)=>featureMode(cloud.schools.find(s=>s.id===schoolId)?.feature_settings,'teacher',teacherFeatureTab(tab));
     const teacherMenuBase = [
       { name: 'ホーム', icon: Home },
-      { name: '学会・コンテスト', icon: Trophy },
       { name: 'みんなの論文', icon: BookOpen },
+      { name: '学会・コンテスト', icon: Trophy },
       { name: '教材', icon: FileUp },
       { name: '課題配信', icon: FileText },
       { name: '課題管理', icon: BarChart3 },
@@ -2984,7 +2989,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       { name: 'アカウント設定', icon: UserCog },
     ];
     const normalizedTeacherMenuOrder = teacherMenuOrder.map(name=>name==='進捗管理'?'課題管理':name);
-    const teacherMenuNames = reconcileMenuOrder(normalizedTeacherMenuOrder, teacherMenuBase.map(m => m.name));
+    const teacherMenuNames = prioritizeMenuItems(
+      reconcileMenuOrder(normalizedTeacherMenuOrder, teacherMenuBase.map(m => m.name)),
+      ['ホーム', 'みんなの論文', '学会・コンテスト']
+    );
     const teacherMenu = teacherMenuNames
       .map(name => teacherMenuBase.find(m => m.name === name))
       .filter((m): m is typeof teacherMenuBase[number] => !!m).filter(m=>tabMode(m.name)!=='hidden');
@@ -4103,16 +4111,19 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const tabMode=(tab:string)=>featureMode(cloud.schools.find(s=>s.id===schoolId)?.feature_settings,'student',tab);
     const studentMenuBase = [
       { name: 'ホーム', icon: Home },
+      { name: 'みんなの論文', icon: BookOpen },
+      { name: '学会・コンテスト', icon: Trophy },
       { name: '課題・提出物', icon: FileText },
       { name: '教材', icon: FileUp },
-      { name: '学会・コンテスト', icon: Trophy },
-      { name: 'みんなの論文', icon: BookOpen },
       { name: '学術論文の検索', icon: Search },
       { name: '先生からのフィードバック', icon: Bot },
       { name: 'LTI運営にメッセージ', icon: Send },
       { name: 'アカウント設定', icon: UserCog },
     ];
-    const studentMenuNames = reconcileMenuOrder(studentMenuOrder, studentMenuBase.map(m => m.name));
+    const studentMenuNames = prioritizeMenuItems(
+      reconcileMenuOrder(studentMenuOrder, studentMenuBase.map(m => m.name)),
+      ['ホーム', 'みんなの論文', '学会・コンテスト']
+    );
     const studentMenu = studentMenuNames
       .map(name => studentMenuBase.find(m => m.name === name))
       .filter((m): m is typeof studentMenuBase[number] => !!m).filter(m=>tabMode(m.name)!=='hidden');
