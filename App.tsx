@@ -1058,6 +1058,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   // 教師側：課題管理で選択中の課題ID・生徒絞り込み・開いている提出
   const [progressSelectedAssignId, setProgressSelectedAssignId] = useState<number | null>(null);
   const [assignmentStudentQuery, setAssignmentStudentQuery] = useState('');
+  const [checkedSubmissionStudents, setCheckedSubmissionStudents] = useLocalStorage<string[]>(`lti_submission_students:v1:${profile.id}:${profile.school_id}`, []);
+  const [onlyCheckedSubmissionStudents, setOnlyCheckedSubmissionStudents] = useState(false);
+  const [studentPickerQuery, setStudentPickerQuery] = useState('');
   const [expandedSubmissionStudentId, setExpandedSubmissionStudentId] = useState<string | null>(null);
 
   const [newAssignTitle, setNewAssignTitle] = useState('');
@@ -3314,10 +3317,28 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     </span>
                   </div>
 
+                  <div className="rounded-2xl border border-orange-200 bg-white p-5 space-y-4">
+                    <div><h3 className="font-bold text-gray-900">チェックした生徒の提出を確認</h3><p className="text-sm text-gray-500 mt-1">提出ボックスは同じ学校の全先生が閲覧できます。この絞り込みは自分の画面だけに適用されます。</p></div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" aria-pressed={!onlyCheckedSubmissionStudents} onClick={()=>{setOnlyCheckedSubmissionStudents(false);setExpandedSubmissionStudentId(null);}} className={`px-4 py-2 rounded-xl border text-sm font-bold ${!onlyCheckedSubmissionStudents?'bg-orange-100 border-orange-400':'bg-white'}`}>全生徒</button>
+                      <button type="button" aria-pressed={onlyCheckedSubmissionStudents} onClick={()=>{setOnlyCheckedSubmissionStudents(true);setExpandedSubmissionStudentId(null);}} className={`px-4 py-2 rounded-xl border text-sm font-bold ${onlyCheckedSubmissionStudents?'bg-orange-100 border-orange-400':'bg-white'}`}>チェックした生徒のみ（{schoolStudents.filter(s=>checkedSubmissionStudents.includes(s.id)).length}名）</button>
+                    </div>
+                    <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-bold">表示する生徒を選ぶ</summary>
+                      <input type="search" aria-label="チェックする生徒を検索" value={studentPickerQuery} onChange={e=>setStudentPickerQuery(e.target.value)} placeholder="名前・クラス・出席番号で検索" className="w-full border rounded-xl p-3 my-3 text-sm"/>
+                      {(()=>{const candidates=schoolStudents.filter(s=>[s.name,s.class,String((s as any).attendance_number??'')].join(' ').toLocaleLowerCase('ja').includes(studentPickerQuery.trim().toLocaleLowerCase('ja')));return <>
+                        <div className="flex gap-4 mb-3 text-sm"><button type="button" onClick={()=>setCheckedSubmissionStudents(previous=>[...new Set([...previous,...candidates.map(s=>s.id)])])} className="text-orange-700 underline">検索中の生徒をすべてチェック</button><button type="button" onClick={()=>setCheckedSubmissionStudents(previous=>previous.filter(id=>!candidates.some(s=>s.id===id)))} className="text-gray-600 underline">検索中のチェックを外す</button></div>
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">{candidates.map(student=><label key={student.id} className="flex gap-3 items-center border rounded-lg p-3 text-sm cursor-pointer"><input type="checkbox" checked={checkedSubmissionStudents.includes(student.id)} onChange={e=>{setCheckedSubmissionStudents(previous=>e.target.checked?[...new Set([...previous,student.id])]:previous.filter(id=>id!==student.id));setExpandedSubmissionStudentId(null);}}/><span>{student.name}<span className="block text-xs text-gray-500">{student.class} {(student as any).attendance_number??''}</span></span></label>)}{!candidates.length&&<p className="text-sm text-gray-500">一致する生徒はいません。</p>}</div>
+                      </>;})()}
+                      <p className="mt-3 text-xs text-gray-500">チェックは先生ごとに、このブラウザーへ保存されます。</p>
+                    </details>
+                    {onlyCheckedSubmissionStudents&&!schoolStudents.some(s=>checkedSubmissionStudents.includes(s.id))&&<p role="status" className="text-sm text-orange-700">生徒が選ばれていません。「表示する生徒を選ぶ」でチェックしてください。</p>}
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {schoolAssignments.map((item) => {
-                      const totalStudents = schoolStudents.length;
-                      const submittedCount = schoolStudents.filter(s => item.submissions?.[s.id]?.status === '提出済み').length;
+                      const visibleStudents = schoolStudents.filter(s=>!onlyCheckedSubmissionStudents||checkedSubmissionStudents.includes(s.id));
+                      const totalStudents = visibleStudents.length;
+                      const submittedCount = visibleStudents.filter(s => item.submissions?.[s.id]?.status === '提出済み').length;
                       const rate = totalStudents > 0 ? Math.round((submittedCount / totalStudents) * 100) : 0;
                       const isSelected = (progressSelectedAssignId ?? schoolAssignments[0]?.id) === item.id;
 
@@ -3360,9 +3381,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     const activeAssign = schoolAssignments.find(a => a.id === currentAssignId);
                     if (!activeAssign) return null;
 
-                    const totalStudents = schoolStudents.length;
-                    const submittedList = schoolStudents.filter(s => activeAssign.submissions?.[s.id]?.status === '提出済み').sort((a,b)=>a.class.localeCompare(b.class,'ja',{numeric:true}) || ((a as any).attendance_number ?? Number.MAX_SAFE_INTEGER)-((b as any).attendance_number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name,'ja'));
-                    const unsubmittedList = schoolStudents.filter(s => !activeAssign.submissions?.[s.id] || activeAssign.submissions[s.id].status !== '提出済み').sort((a,b)=>a.class.localeCompare(b.class,'ja',{numeric:true}) || ((a as any).attendance_number ?? Number.MAX_SAFE_INTEGER)-((b as any).attendance_number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name,'ja'));
+                    const visibleStudents = schoolStudents.filter(s=>!onlyCheckedSubmissionStudents||checkedSubmissionStudents.includes(s.id));
+                      const totalStudents = visibleStudents.length;
+                    const submittedList = visibleStudents.filter(s => activeAssign.submissions?.[s.id]?.status === '提出済み').sort((a,b)=>a.class.localeCompare(b.class,'ja',{numeric:true}) || ((a as any).attendance_number ?? Number.MAX_SAFE_INTEGER)-((b as any).attendance_number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name,'ja'));
+                    const unsubmittedList = visibleStudents.filter(s => !activeAssign.submissions?.[s.id] || activeAssign.submissions[s.id].status !== '提出済み').sort((a,b)=>a.class.localeCompare(b.class,'ja',{numeric:true}) || ((a as any).attendance_number ?? Number.MAX_SAFE_INTEGER)-((b as any).attendance_number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name,'ja'));
                     const studentQuery = assignmentStudentQuery.trim().toLocaleLowerCase('ja');
                     const matchesStudentQuery = (student: {name:string;class:string;attendance_number?:number|null}) => {
                       if (!studentQuery) return true;
