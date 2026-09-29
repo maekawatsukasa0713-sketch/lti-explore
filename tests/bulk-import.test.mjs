@@ -15,6 +15,6 @@ try{
  const result={classification:{field:'地学・宇宙',reason:'天体の観測データを扱う'}};
  assert.deepEqual(classificationPatch({classificationMode:'manual',field:'物理'},result),{});
  assert.deepEqual(classificationPatch({classificationMode:'ai'},result),{field:'地学・宇宙',classificationReason:result.classification.reason,bulkReviewed:false});
- const bulkSource=readFileSync('BulkImport.tsx','utf8');assert.match(bulkSource,/runResearchBatch/);assert.match(bulkSource,/RESEARCH_CONCURRENCY/);assert.match(bulkSource,/1時間300件・1日3,000件/);const publishSource=readFileSync('publish-research.ts','utf8');assert.match(publishSource,/reason==='quota'/);
+ const bulkSource=readFileSync('BulkImport.tsx','utf8');assert.match(bulkSource,/runResearchBatch/);assert.match(bulkSource,/RESEARCH_CONCURRENCY/);assert.match(bulkSource,/1時間300件・1日3,000件/);assert.doesNotMatch(bulkSource,/各50MB|file\.size>50\*1024\*1024/);assert.match(bulkSource,/大きなファイルは分割アップロードします/);const publishSource=readFileSync('publish-research.ts','utf8');assert.match(publishSource,/reason==='quota'/);
  console.log('PASS: selection confirms review, missing and failed AI blocked, stale versions rejected');
 }finally{await rm(dir,{recursive:true,force:true});}
