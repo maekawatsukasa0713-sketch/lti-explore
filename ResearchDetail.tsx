@@ -74,7 +74,7 @@ export function ResearchDetail({
      {engagementMessage&&<p role="status" className="text-xs font-medium text-emerald-700">{engagementMessage}</p>}
     </header>
     <div className="p-4">
-     {paper.storagePath?<PdfView path={paper.storagePath}/>:<p className="p-6 text-sm text-slate-500">本文ファイルは未登録です。</p>}
+     {paper.storagePath?<PdfView path={paper.storagePath} label={paper.fileName||paper.title}/>:<p className="p-6 text-sm text-slate-500">本文ファイルは未登録です。</p>}
      {paper.abstract&&<details className="p-4 text-sm" open={!paper.storagePath}><summary className="font-bold cursor-pointer">著者による概要</summary><p className="mt-3 whitespace-pre-wrap leading-relaxed text-slate-600">{paper.abstract}</p></details>}
     </div>
    </article>
