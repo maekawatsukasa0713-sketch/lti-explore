@@ -121,6 +121,8 @@ try{
  assert.match(appSource,/setProgressSelectedAssignId\(assign\.id\);setCurrentTab\('課題管理'\)/);
  assert.match(appSource,/aria-label="課題を編集"/);
  assert.match(appSource,/aria-label="課題を削除"/);
+ assert.match(appSource,/showPicker\?\.\(\)/);
+ assert.match(appSource,/font-mono cursor-pointer/);
  assert.match(appSource,/出席番号 \{\(student as any\)\.attendance_number \?\? "未設定"\}/);
 
  const cloudSource=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
