@@ -812,7 +812,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [schoolError, setSchoolError] = useState('');
   const [selectedRole, setSelectedRole] = useState<'teacher' | 'student' | null>(null);
   const [currentTab, setCurrentTab] = useState('ホーム');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
+  const closeSidebarOnMobile = () => { if (typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches) setSidebarCollapsed(true); };
   const [inputLoginId, setInputLoginId] = useState('');
   const [inputPassword, setInputPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -1550,6 +1551,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         } else {
                           setLtiCurrentTab(group.children[0]);
                         }
+                        closeSidebarOnMobile();
                       }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${
                         isGroupActive && !group.children ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-100'
@@ -1566,7 +1568,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           return (
                             <button
                               key={child}
-                              onClick={() => setLtiCurrentTab(child)}
+                              onClick={() => { setLtiCurrentTab(child); closeSidebarOnMobile(); }}
                               className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
                                 isChildActive ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                               }`}
@@ -3140,6 +3142,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     onDragEnd={() => setDraggedTabName(null)}
                     onClick={() => {
                       setCurrentTab(item.name);
+                      closeSidebarOnMobile();
                       if (item.name !== '課題配信') {
                         setEditingAssignmentId(null);
                         setNewAssignTitle('');
@@ -4288,6 +4291,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     onDragEnd={() => setDraggedTabName(null)}
                     onClick={() => {
                       setCurrentTab(item.name);
+                      closeSidebarOnMobile();
                       setStudentSubmitSuccessMsg('');
                     }}
                     className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors cursor-grab active:cursor-grabbing ${
