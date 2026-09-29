@@ -40,17 +40,33 @@ export async function saveMyProfile(name:string,password:string) {
  const {error}=await supabase.from('lti_profiles').update({name:name.trim()}).eq('id',user.id);if(error)throw error;
 }
 export {uploadDocument as uploadPdf} from './document-upload';
-function PdfFullscreenViewer({file,url,label,onClose}:{file:Blob;url:string;label:string;onClose:()=>void}) {
+function PdfPageCanvas({pdf,pageNumber,zoom,onVisible,register}:{pdf:any;pageNumber:number;zoom:number;onVisible:(page:number)=>void;register:(el:HTMLDivElement|null)=>void}) {
  const canvasRef=useRef<HTMLCanvasElement|null>(null);
+ const wrapperRef=useRef<HTMLDivElement|null>(null);
+ const [rendered,setRendered]=useState(false);
+ const [error,setError]=useState('');
+ useEffect(()=>{register(wrapperRef.current);return()=>register(null);},[register]);
+ useEffect(()=>{const el=wrapperRef.current;if(!el)return;const observer=new IntersectionObserver(entries=>{for(const entry of entries){if(entry.isIntersecting){setRendered(true);if(entry.intersectionRatio>=0.35)onVisible(pageNumber);}}},{root:null,rootMargin:'900px 0px',threshold:[0,.35,.7]});observer.observe(el);return()=>observer.disconnect();},[onVisible,pageNumber]);
+ useEffect(()=>{if(!rendered||!pdf||!canvasRef.current)return;let cancelled=false;let renderTask:any;(async()=>{try{const pdfPage=await pdf.getPage(pageNumber);if(cancelled)return;const viewport=pdfPage.getViewport({scale:zoom});const canvas=canvasRef.current;if(!canvas)return;const ratio=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.floor(viewport.width*ratio);canvas.height=Math.floor(viewport.height*ratio);canvas.style.width=viewport.width+'px';canvas.style.height=viewport.height+'px';const ctx=canvas.getContext('2d');if(!ctx)return;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);renderTask=pdfPage.render({canvasContext:ctx,viewport,transform:ratio===1?undefined:[ratio,0,0,ratio,0,0]});await renderTask.promise;pdfPage.cleanup();setError('');}catch(e:any){if(!cancelled&&e?.name!=='RenderingCancelledException')setError('このページを表示できませんでした。');}})();return()=>{cancelled=true;if(renderTask?.cancel)renderTask.cancel();};},[pdf,pageNumber,rendered,zoom]);
+ return <section ref={wrapperRef} className="scroll-mt-24 flex justify-center">
+  <div className="relative bg-white shadow-2xl ring-1 ring-black/20 rounded-sm overflow-hidden max-w-full min-h-[520px] min-w-[min(92vw,360px)] flex items-center justify-center">
+   {error?<div className="p-8 text-slate-600 text-sm">{error}</div>:<canvas ref={canvasRef} className="block max-w-full h-auto"/>}
+   {!rendered&&!error&&<div className="absolute inset-0 bg-white flex items-center justify-center text-slate-400 text-sm font-bold">ページ {pageNumber} を読み込み中…</div>}
+  </div>
+ </section>;
+}
+
+function PdfFullscreenViewer({file,url,label,onClose}:{file:Blob;url:string;label:string;onClose:()=>void}) {
  const [pdf,setPdf]=useState<any>(null);
  const [page,setPage]=useState(1);
  const [pages,setPages]=useState(0);
- const [zoom,setZoom]=useState(1.2);
+ const [zoom,setZoom]=useState(1.1);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
+ const pageRefs=useRef<Record<number,HTMLDivElement|null>>({});
  useEffect(()=>{let alive=true;let task:any=null;(async()=>{try{const pdfjs=await import('pdfjs-dist');pdfjs.GlobalWorkerOptions.workerSrc=new URL('pdfjs-dist/build/pdf.worker.min.mjs',import.meta.url).toString();task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false});const doc=await task.promise;if(!alive){await doc.destroy();return;}setPdf(doc);setPages(doc.numPages);setPage(1);}catch(e){if(alive)setError(e instanceof Error?e.message:'PDFを開けませんでした。');}finally{if(alive)setLoading(false);}})();return()=>{alive=false;if(task?.destroy)void task.destroy();};},[file]);
- useEffect(()=>{if(!pdf||!canvasRef.current)return;let cancelled=false;let renderTask:any;(async()=>{try{setLoading(true);const pdfPage=await pdf.getPage(page);if(cancelled)return;const viewport=pdfPage.getViewport({scale:zoom});const canvas=canvasRef.current;if(!canvas)return;const ratio=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.floor(viewport.width*ratio);canvas.height=Math.floor(viewport.height*ratio);canvas.style.width=viewport.width+'px';canvas.style.height=viewport.height+'px';const ctx=canvas.getContext('2d');if(!ctx)return;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);renderTask=pdfPage.render({canvasContext:ctx,viewport,transform:ratio===1?undefined:[ratio,0,0,ratio,0,0]});await renderTask.promise;pdfPage.cleanup();}catch(e:any){if(!cancelled&&e?.name!=='RenderingCancelledException')setError('PDFページを表示できませんでした。');}finally{if(!cancelled)setLoading(false);}})();return()=>{cancelled=true;if(renderTask?.cancel)renderTask.cancel();};},[pdf,page,zoom]);
- useEffect(()=>{const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();else if(e.key==='ArrowLeft')setPage(p=>Math.max(1,p-1));else if(e.key==='ArrowRight')setPage(p=>Math.min(pages||p,p+1));};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[onClose,pages]);
+ const goToPage=(target:number)=>{const next=Math.min(Math.max(target,1),pages||1);setPage(next);pageRefs.current[next]?.scrollIntoView({behavior:'smooth',block:'start'});};
+ useEffect(()=>{const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();else if(e.key==='ArrowLeft')goToPage(page-1);else if(e.key==='ArrowRight')goToPage(page+1);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[onClose,page,pages]);
  return <div className="fixed inset-0 z-[120] bg-slate-950 text-white flex flex-col" role="dialog" aria-modal="true" aria-label="論文PDF 全画面ビューア">
   <header className="h-16 shrink-0 border-b border-white/10 bg-slate-900/95 backdrop-blur flex items-center gap-4 px-4 md:px-6">
    <div className="min-w-0 flex items-center gap-3 flex-1">
@@ -58,33 +74,30 @@ function PdfFullscreenViewer({file,url,label,onClose}:{file:Blob;url:string;labe
     <div className="min-w-0"><p className="text-[11px] font-bold tracking-widest text-slate-400">LTI RESEARCH VIEWER</p><p className="text-sm font-bold truncate">{label}</p></div>
    </div>
    <div className="hidden sm:flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1">
-    <button type="button" aria-label="前のページ" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-30"><ChevronLeft className="w-4 h-4"/></button>
+    <button type="button" aria-label="前のページ" disabled={page<=1} onClick={()=>goToPage(page-1)} className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-30"><ChevronLeft className="w-4 h-4"/></button>
     <div className="px-2 text-xs font-bold tabular-nums min-w-20 text-center">{page} / {pages||'—'}</div>
-    <button type="button" aria-label="次のページ" disabled={!pages||page>=pages} onClick={()=>setPage(p=>Math.min(pages,p+1))} className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-30"><ChevronRight className="w-4 h-4"/></button>
+    <button type="button" aria-label="次のページ" disabled={!pages||page>=pages} onClick={()=>goToPage(page+1)} className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-30"><ChevronRight className="w-4 h-4"/></button>
    </div>
    <div className="hidden md:flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1">
     <button type="button" aria-label="縮小" onClick={()=>setZoom(z=>Math.max(.6,Math.round((z-.1)*10)/10))} className="p-2 rounded-lg hover:bg-white/10"><Minus className="w-4 h-4"/></button>
     <span className="px-2 text-xs font-bold tabular-nums min-w-14 text-center">{Math.round(zoom*100)}%</span>
-    <button type="button" aria-label="拡大" onClick={()=>setZoom(z=>Math.min(2.4,Math.round((z+.1)*10)/10))} className="p-2 rounded-lg hover:bg-white/10"><Plus className="w-4 h-4"/></button>
+    <button type="button" aria-label="拡大" onClick={()=>setZoom(z=>Math.min(2.2,Math.round((z+.1)*10)/10))} className="p-2 rounded-lg hover:bg-white/10"><Plus className="w-4 h-4"/></button>
    </div>
    <a href={url} download="research-paper.pdf" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-bold"><Download className="w-4 h-4"/><span className="hidden md:inline">ダウンロード</span></a>
    <button type="button" onClick={onClose} className="inline-flex items-center gap-2 rounded-xl bg-white text-slate-900 hover:bg-slate-100 px-3 py-2 text-xs font-bold"><X className="w-4 h-4"/><span className="hidden sm:inline">閉じる</span></button>
   </header>
   <div className="sm:hidden shrink-0 border-b border-white/10 bg-slate-900 px-4 py-2 flex items-center justify-between">
-   <button type="button" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="p-2 rounded-lg bg-white/5 disabled:opacity-30"><ChevronLeft className="w-4 h-4"/></button>
+   <button type="button" disabled={page<=1} onClick={()=>goToPage(page-1)} className="p-2 rounded-lg bg-white/5 disabled:opacity-30"><ChevronLeft className="w-4 h-4"/></button>
    <span className="text-xs font-bold tabular-nums">{page} / {pages||'—'}</span>
-   <button type="button" disabled={!pages||page>=pages} onClick={()=>setPage(p=>Math.min(pages,p+1))} className="p-2 rounded-lg bg-white/5 disabled:opacity-30"><ChevronRight className="w-4 h-4"/></button>
+   <button type="button" disabled={!pages||page>=pages} onClick={()=>goToPage(page+1)} className="p-2 rounded-lg bg-white/5 disabled:opacity-30"><ChevronRight className="w-4 h-4"/></button>
   </div>
   <main className="flex-1 overflow-auto bg-slate-800/80 p-3 md:p-8">
-   <div className="min-h-full flex justify-center items-start">
-    <div className="relative bg-white shadow-2xl ring-1 ring-black/20 rounded-sm overflow-hidden max-w-full">
-     {error?<div className="w-[min(90vw,800px)] min-h-[60vh] flex items-center justify-center p-8 text-slate-700 text-sm">{error}</div>:<canvas ref={canvasRef} className="block max-w-full h-auto"/>}
-     {loading&&!error&&<div className="absolute inset-0 bg-white/80 flex items-center justify-center text-slate-500 text-sm font-bold">PDFを読み込み中…</div>}
-    </div>
-   </div>
+   {error?<div className="mx-auto max-w-3xl min-h-[60vh] rounded-xl bg-white text-slate-700 flex items-center justify-center p-8 text-sm">{error}</div>:loading||!pdf?<div className="min-h-[60vh] flex items-center justify-center text-slate-300 text-sm font-bold">PDFを読み込み中…</div>:<div className="mx-auto w-fit max-w-full space-y-5 md:space-y-8 pb-8">
+    {Array.from({length:pages},(_,i)=>i+1).map(pageNumber=><PdfPageCanvas key={pageNumber} pdf={pdf} pageNumber={pageNumber} zoom={zoom} onVisible={setPage} register={el=>{pageRefs.current[pageNumber]=el;}}/>)}
+   </div>}
   </main>
   <footer className="shrink-0 border-t border-white/10 bg-slate-900/95 px-4 py-2 flex items-center justify-center gap-4 text-[11px] text-slate-400">
-   <span>← → でページ移動</span><span>Escで閉じる</span><span className="hidden sm:inline">拡大・縮小しても原稿データは変更されません</span>
+   <span>スクロールで全ページを連続閲覧</span><span>← → でページ移動</span><span>Escで閉じる</span>
   </footer>
  </div>;
 }
