@@ -124,6 +124,19 @@ try{
  assert.match(appSource,/showPicker\?\.\(\)/);
  assert.match(appSource,/font-mono cursor-pointer/);
  assert.match(appSource,/出席番号 \{\(student as any\)\.attendance_number \?\? "未設定"\}/);
+ assert.match(appSource,/ファイルだけで一括申請/);
+ assert.match(appSource,/handleTeacherBatchSubmitPapers/);
+ assert.match(appSource,/multiple/);
+ assert.match(appSource,/field: '未分類'/);
+ assert.match(appSource,/title: file\.name\.replace/);
+ assert.doesNotMatch(appSource,/最大ファイルサイズ: 50MB/);
+ assert.doesNotMatch(appSource,/1ファイル50MBまで/);
+ const uploadSource=readFileSync(new URL('../document-upload.ts',import.meta.url),'utf8');
+ assert.doesNotMatch(uploadSource,/MAX_DOCUMENT_BYTES|50MB以内/);
+ assert.match(uploadSource,/file\.size<=6\*1024\*1024/);
+ assert.match(uploadSource,/tus-js-client/);
+ const researchAiSource=readFileSync(new URL('../research-ai.ts',import.meta.url),'utf8');
+ assert.doesNotMatch(researchAiSource,/原本は50MB以下|file\.size>50\*1024\*1024/);
 
  const cloudSource=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
  assert.match(cloudSource,/https:\/\/lti-explore-six\.vercel\.app\/\?flow=recovery/);
