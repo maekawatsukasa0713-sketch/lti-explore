@@ -1052,8 +1052,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [aiReviewItems, setAiReviewItems] = useState<AiReviewItem[]>([]);
   const [teacherApplyMessage, setTeacherApplyMessage] = useState('');
 
-  // 教師側：進捗管理で選択中の課題ID
+  // 教師側：課題管理で選択中の課題ID・生徒絞り込み・開いている提出
   const [progressSelectedAssignId, setProgressSelectedAssignId] = useState<number | null>(null);
+  const [assignmentStudentQuery, setAssignmentStudentQuery] = useState('');
+  const [expandedSubmissionStudentId, setExpandedSubmissionStudentId] = useState<string | null>(null);
 
   const [newAssignTitle, setNewAssignTitle] = useState('');
   const [newAssignDeadline, setNewAssignDeadline] = useState('');
@@ -3287,7 +3289,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       return (
                         <div
                           key={item.id}
-                          onClick={() => setProgressSelectedAssignId(item.id)}
+                          onClick={() => { setProgressSelectedAssignId(item.id); setExpandedSubmissionStudentId(null); }}
                           className={`p-5 rounded-2xl border cursor-pointer transition-all bg-white shadow-sm space-y-3 ${
                             isSelected ? 'ring-2 ring-orange-400 border-orange-400' : 'hover:border-orange-200'
                           }`}
@@ -3324,8 +3326,16 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     if (!activeAssign) return null;
 
                     const totalStudents = schoolStudents.length;
-                    const submittedList = schoolStudents.filter(s => activeAssign.submissions?.[s.id]?.status === '提出済み');
+                    const submittedList = schoolStudents.filter(s => activeAssign.submissions?.[s.id]?.status === '提出済み').sort((a,b)=>a.class.localeCompare(b.class,'ja',{numeric:true}) || ((a as any).attendance_number ?? Number.MAX_SAFE_INTEGER)-((b as any).attendance_number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name,'ja'));
                     const unsubmittedList = schoolStudents.filter(s => !activeAssign.submissions?.[s.id] || activeAssign.submissions[s.id].status !== '提出済み').sort((a,b)=>a.class.localeCompare(b.class,'ja',{numeric:true}) || ((a as any).attendance_number ?? Number.MAX_SAFE_INTEGER)-((b as any).attendance_number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name,'ja'));
+                    const studentQuery = assignmentStudentQuery.trim().toLocaleLowerCase('ja');
+                    const matchesStudentQuery = (student: {name:string;class:string;attendance_number?:number|null}) => {
+                      if (!studentQuery) return true;
+                      const attendance = (student as any).attendance_number ?? '';
+                      return [student.name, student.class, String(attendance)].join(' ').toLocaleLowerCase('ja').includes(studentQuery);
+                    };
+                    const filteredSubmittedList = submittedList.filter(matchesStudentQuery);
+                    const filteredUnsubmittedList = unsubmittedList.filter(matchesStudentQuery);
                     const rate = totalStudents > 0 ? Math.round((submittedList.length / totalStudents) * 100) : 0;
 
                     return (
@@ -3354,55 +3364,84 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           </div>
                         </div>
 
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                          <label className="relative block">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                              type="search"
+                              value={assignmentStudentQuery}
+                              onChange={e=>{setAssignmentStudentQuery(e.target.value);setExpandedSubmissionStudentId(null);}}
+                              placeholder="生徒名で検索（クラス・出席番号でも検索できます）"
+                              className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-9 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                            />
+                            {assignmentStudentQuery&&<button type="button" aria-label="生徒検索をクリア" onClick={()=>setAssignmentStudentQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"><XCircle className="w-4 h-4"/></button>}
+                          </label>
+                        </div>
+
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
                           <div className="space-y-3">
                             <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" /> 提出者一覧・個別回答閲覧 ({submittedList.length}名)
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" /> 提出済み ({filteredSubmittedList.length}名{assignmentStudentQuery?` / 全${submittedList.length}名`:''})
                             </h4>
                             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                              {submittedList.length === 0 ? (
-                                <p className="text-xs font-medium text-gray-400 italic p-4 bg-gray-50 rounded-xl text-center">まだ提出者がいません。</p>
+                              {filteredSubmittedList.length === 0 ? (
+                                <p className="text-xs font-medium text-gray-400 italic p-4 bg-gray-50 rounded-xl text-center">{assignmentStudentQuery?'検索条件に一致する提出済み生徒はいません。':'まだ提出者がいません。'}</p>
                               ) : (
-                                submittedList.map(student => {
+                                filteredSubmittedList.map(student => {
                                   const sub = activeAssign.submissions[student.id];
                                   const fileName = sub.submittedFile ? (typeof sub.submittedFile === 'string' ? sub.submittedFile : sub.submittedFile.name) : null;
                                   return (
-                                    <div key={student.id} className="min-w-0 p-4 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs space-y-3">
-                                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 border-b border-emerald-100 pb-3">
-                                        <div className="min-w-0">
+                                    <div key={student.id} className="min-w-0 bg-white rounded-xl border border-gray-200 overflow-hidden text-xs shadow-sm">
+                                      <button
+                                        type="button"
+                                        aria-expanded={expandedSubmissionStudentId===student.id}
+                                        onClick={()=>setExpandedSubmissionStudentId(current=>current===student.id?null:student.id)}
+                                        className="w-full p-3.5 flex items-center gap-3 text-left hover:bg-emerald-50/50 transition-colors"
+                                      >
+                                        <ChevronRight className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${expandedSubmissionStudentId===student.id?'rotate-90':''}`}/>
+                                        <div className="min-w-0 flex-1">
                                           <p className="font-bold text-gray-900 text-sm break-words">{student.name}</p>
                                           <p className="text-xs font-medium text-gray-500 mt-0.5">{student.class}・出席番号 {(student as any).attendance_number ?? "未設定"}</p>
                                         </div>
-                                        <div className="sm:text-right shrink-0">
+                                        <div className="text-right shrink-0">
                                           <p className="text-[11px] font-bold text-gray-400">提出日時</p>
                                           <p className="text-xs font-bold text-emerald-700 mt-0.5">{formatDisplayDateTime(sub.submittedAt)}</p>
-                                          {sub.late && <span className="inline-block mt-1 text-[11px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">期限後提出</span>}
+                                          {sub.late && <span className="inline-block mt-1 text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">期限後</span>}
                                         </div>
-                                      </div>
-                                      
-                                      <div className="space-y-1">
-                                        <p className="font-bold text-gray-700 text-xs">【生徒入力コメント・報告文】</p>
-                                        <p className="text-gray-800 bg-white p-3 rounded-lg border border-emerald-200/60 whitespace-pre-wrap text-xs leading-relaxed">
-                                          {sub.submittedText || '（入力されたテキストはありません）'}
-                                        </p>
-                                      </div>
+                                      </button>
 
-                                      <form className="space-y-2 rounded-xl border border-orange-100 bg-white p-3" onSubmit={e=>{e.preventDefault();const form=e.currentTarget;const note=String(new FormData(form).get('feedback')||'').trim();if(!note)return;setStudentFeedbackMessages([{id:Date.now(),assignmentId:String(activeAssign.id),schoolId,studentId:student.id,teacherName:loggedInTeacher.name,paperTitle:activeAssign.title,fileName:fileName||'',result:{corrections:[],advice:[],nextExperiments:[]},note,sentAt:new Date().toISOString(),read:false},...studentFeedbackMessages]);form.reset();}}><label className="block text-xs font-bold text-gray-600">この提出物へのフィードバック<textarea name="feedback" required maxLength={10000} aria-label="課題へのフィードバック" placeholder="コメントを入力..." className="mt-1.5 w-full min-h-20 border border-gray-200 rounded-lg p-3 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-300"/></label><div className="flex justify-end"><button className="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold px-3 py-2 rounded-lg">フィードバックを送る</button></div></form>
-                                      {fileName ? (
-                                        <div className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-emerald-200/60">
-                                          <span className="text-emerald-800 font-bold flex items-center gap-1.5 truncate pr-2">
-                                            <FileText className="w-4 h-4 text-red-500 shrink-0" /> {fileName}
-                                          </span>
-                                          <button
-                                            onClick={() => setPreviewPdfModalData({ studentName: student.name, fileName, text: sub.submittedText, storagePath: sub.storagePath })}
-                                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1 shrink-0"
-                                          >
-                                            <Eye className="w-3.5 h-3.5" /> 添付を開く
-                                          </button>
+                                      {expandedSubmissionStudentId===student.id&&<div className="border-t border-gray-100 bg-emerald-50/30 p-4 space-y-3">
+                                        <div className="space-y-1">
+                                          <p className="font-bold text-gray-700 text-xs">生徒入力コメント・報告文</p>
+                                          <p className="text-gray-800 bg-white p-3 rounded-lg border border-emerald-200/60 whitespace-pre-wrap text-xs leading-relaxed">
+                                            {sub.submittedText || '（入力されたテキストはありません）'}
+                                          </p>
                                         </div>
-                                      ) : (
-                                        <p className="text-gray-400 italic text-xs">※添付ファイルなし</p>
-                                      )}
+
+                                        {fileName ? (
+                                          <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-lg border border-emerald-200/60">
+                                            <span className="min-w-0 text-emerald-800 font-bold flex items-center gap-1.5 truncate">
+                                              <FileText className="w-4 h-4 text-red-500 shrink-0" /> <span className="truncate">{fileName}</span>
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => setPreviewPdfModalData({ studentName: student.name, fileName, text: sub.submittedText, storagePath: sub.storagePath })}
+                                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1 shrink-0"
+                                            >
+                                              <Eye className="w-3.5 h-3.5" /> 添付を開く
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <p className="text-gray-400 italic text-xs">※添付ファイルなし</p>
+                                        )}
+
+                                        <form className="space-y-2 rounded-xl border border-orange-100 bg-white p-3" onSubmit={e=>{e.preventDefault();const form=e.currentTarget;const note=String(new FormData(form).get('feedback')||'').trim();if(!note)return;setStudentFeedbackMessages([{id:Date.now(),assignmentId:String(activeAssign.id),schoolId,studentId:student.id,teacherName:loggedInTeacher.name,paperTitle:activeAssign.title,fileName:fileName||'',result:{corrections:[],advice:[],nextExperiments:[]},note,sentAt:new Date().toISOString(),read:false},...studentFeedbackMessages]);form.reset();}}>
+                                          <label className="block text-xs font-bold text-gray-600">この提出物へのフィードバック
+                                            <textarea name="feedback" required maxLength={10000} aria-label="課題へのフィードバック" placeholder="コメントを入力..." className="mt-1.5 w-full min-h-20 border border-gray-200 rounded-lg p-3 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-300"/>
+                                          </label>
+                                          <div className="flex justify-end"><button className="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold px-3 py-2 rounded-lg">フィードバックを送る</button></div>
+                                        </form>
+                                      </div>}
                                     </div>
                                   );
                                 })
@@ -3412,10 +3451,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                           <div className="space-y-3">
                             <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
-                              <XCircle className="w-4 h-4 text-rose-600" /> 未提出者一覧 ({unsubmittedList.length}名)
+                              <XCircle className="w-4 h-4 text-rose-600" /> 未提出 ({filteredUnsubmittedList.length}名{assignmentStudentQuery?` / 全${unsubmittedList.length}名`:''})
                             </h4>
                             <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                              {unsubmittedList.map(student => (
+                              {filteredUnsubmittedList.length===0?<p className="text-xs font-medium text-gray-400 italic p-4 bg-gray-50 rounded-xl text-center">{assignmentStudentQuery?'検索条件に一致する未提出生徒はいません。':'未提出者はいません。'}</p>:filteredUnsubmittedList.map(student => (
                                 <div key={student.id} className="min-w-0 p-3.5 bg-gray-50 rounded-xl border border-gray-200 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                   <div className="min-w-0">
                                     <p className="font-bold text-gray-900 text-sm break-words">{student.name}</p>
@@ -3512,7 +3551,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   <div className="space-y-3">
                     <h3 className="text-sm font-bold text-gray-900">配信中の課題一覧</h3>
                     {schoolAssignments.map(assign => (
-                      <div key={assign.id} role="button" tabIndex={0} onClick={()=>{setProgressSelectedAssignId(assign.id);setCurrentTab('課題管理');}} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setProgressSelectedAssignId(assign.id);setCurrentTab('課題管理');}}} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 cursor-pointer hover:border-orange-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-orange-300">
+                      <div key={assign.id} role="button" tabIndex={0} onClick={()=>{setProgressSelectedAssignId(assign.id);setExpandedSubmissionStudentId(null);setCurrentTab('課題管理');}} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setProgressSelectedAssignId(assign.id);setExpandedSubmissionStudentId(null);setCurrentTab('課題管理');}}} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 cursor-pointer hover:border-orange-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-orange-300">
                         <div className="space-y-1 min-w-0">
                           <span className="text-xs font-mono font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded">期限: {assign.deadline}</span>
                           <h4 className="font-bold text-gray-900 text-base">{assign.title}</h4>
