@@ -1,11 +1,12 @@
-name: Restore staging live Storage from isolated backup
+name: Reset staging Storage from backup
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/staging-storage-restore-once.yml'
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RESET to replace staging lti-documents with the backup snapshot'
+        required: true
+        type: string
 
 jobs:
   restore:
@@ -18,9 +19,10 @@ jobs:
       DEST_BUCKET: lti-documents
       AWS_REGION: ap-southeast-1
     steps:
-      - name: Check staging credentials
+      - name: Confirm reset and check staging credentials
         shell: bash
         run: |
+          test "${{ inputs.confirm }}" = "RESET"
           test -n "$STAGING_ACCESS_KEY_ID"
           test -n "$STAGING_SECRET_ACCESS_KEY"
 
@@ -50,9 +52,28 @@ jobs:
           dest_bucket = os.environ['DEST_BUCKET']
           copied = 0
           skipped = 0
+          deleted = 0
           failed = []
 
+          # Build the backup key set first so the staging live bucket can be
+          # reset to an exact mirror of the isolated backup.
+          backup_keys = {}
           paginator = s3.get_paginator('list_objects_v2')
+          for page in paginator.paginate(Bucket=source_bucket):
+              for item in page.get('Contents', []):
+                  backup_keys[item['Key']] = int(item['Size'])
+
+          # Remove staging-only test objects.
+          for page in paginator.paginate(Bucket=dest_bucket):
+              for item in page.get('Contents', []):
+                  key = item['Key']
+                  if key not in backup_keys:
+                      try:
+                          s3.delete_object(Bucket=dest_bucket, Key=key)
+                          deleted += 1
+                      except Exception as exc:
+                          failed.append((key, f'delete: {exc}'))
+
           for page in paginator.paginate(Bucket=source_bucket):
               for item in page.get('Contents', []):
                   key = item['Key']
@@ -91,7 +112,7 @@ jobs:
                   except Exception as exc:
                       failed.append((key, str(exc)))
 
-          print(f'copied={copied} skipped={skipped} failed={len(failed)}')
+          print(f'copied={copied} skipped={skipped} deleted={deleted} failed={len(failed)}')
           if failed:
               for key, error in failed[:20]:
                   print(f'FAILED {key}: {error}')
