@@ -2765,7 +2765,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const publishedList = papers.filter(p => p.status === '公開中');
 
     // 教員側で閲覧可能なコンテスト（一斉公開 または 自校が指定された公開）
-    const visibleContests = contests.filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)));
+    const visibleContests = contests
+      .filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)))
+      .sort((a, b) => Number(b.targetType === 'specific') - Number(a.targetType === 'specific'));
 
     const handleTeacherProfileUpdate = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -4068,7 +4070,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
 
     // 【要件②用】生徒側で閲覧可能なコンテスト（一斉公開 または 自校が指定された公開）
-    const visibleContests = contests.filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)));
+    const visibleContests = contests
+      .filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)))
+      .sort((a, b) => Number(b.targetType === 'specific') - Number(a.targetType === 'specific'));
 
     // 先生から送られたAI添削フィードバック（自分宛のもののみ、新しい順）
     const myFeedbackMessages = studentFeedbackMessages
