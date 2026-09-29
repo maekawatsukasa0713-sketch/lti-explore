@@ -164,6 +164,22 @@ type StudentFeedbackMessage = {
 const PAPER_FIELD_OPTIONS = ['生物', '物理', '地学', '化学', '物作り', '社会科学', '生命倫理'] as const;
 
 // 「みんなの論文」検索：タイトル・著者・学校名・分野を対象に部分一致で判定
+const formatDisplayDateTime = (value?: string) => {
+  if (!value) return '日時不明';
+  const trimmed = value.trim();
+  if (/^\d{4}\/\d{1,2}\/\d{1,2}/.test(trimmed)) return trimmed;
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return trimmed;
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+};
+
 const matchesPaperSearch = (paper: PublicPaper, query: string) => {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -2745,21 +2761,23 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       updateAiReviewItem(item.id, { sent: true });
     };
 
-    const tabMode=(tab:string)=>featureMode(cloud.schools.find(s=>s.id===schoolId)?.feature_settings,'teacher',tab);
+    const teacherFeatureTab=(tab:string)=>tab==='課題管理'?'進捗管理':tab;
+    const tabMode=(tab:string)=>featureMode(cloud.schools.find(s=>s.id===schoolId)?.feature_settings,'teacher',teacherFeatureTab(tab));
     const teacherMenuBase = [
       { name: 'ホーム', icon: Home },
       { name: '学会・コンテスト', icon: Trophy },
       { name: 'みんなの論文', icon: BookOpen },
       { name: '教材', icon: FileUp },
       { name: '課題配信', icon: FileText },
-      { name: '進捗管理', icon: BarChart3 },
+      { name: '課題管理', icon: BarChart3 },
       { name: '探究論文の公開申請', icon: FileUp },
       { name: 'AI添削', icon: Bot },
 
 
       { name: 'アカウント設定', icon: UserCog },
     ];
-    const teacherMenuNames = reconcileMenuOrder(teacherMenuOrder, teacherMenuBase.map(m => m.name));
+    const normalizedTeacherMenuOrder = teacherMenuOrder.map(name=>name==='進捗管理'?'課題管理':name);
+    const teacherMenuNames = reconcileMenuOrder(normalizedTeacherMenuOrder, teacherMenuBase.map(m => m.name));
     const teacherMenu = teacherMenuNames
       .map(name => teacherMenuBase.find(m => m.name === name))
       .filter((m): m is typeof teacherMenuBase[number] => !!m).filter(m=>tabMode(m.name)!=='hidden');
@@ -2863,7 +2881,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                 <div className="space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-2">
                     <h1 className="text-xl font-extrabold text-gray-900">先生用 ポータルホーム</h1>
-                    <p className="text-xs font-medium text-gray-500">探究学習の進捗確認や課題配信を行えます。</p>
+                    <p className="text-xs font-medium text-gray-500">探究学習の課題配信や提出状況の管理を行えます。</p>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3116,12 +3134,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   </div>
                 </div>
 
-              ) : currentTab === '進捗管理' ? (
+              ) : currentTab === '課題管理' ? (
                 <div className="space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
                     <div>
-                      <h2 className="text-lg font-bold text-gray-900">発信課題の提出率・進捗管理</h2>
-                      <p className="text-sm font-medium text-gray-500">配信した各課題の生徒の提出率、提出物（入力文章・添付PDF）の詳細を確認できます。</p>
+                      <h2 className="text-lg font-bold text-gray-900">課題ごとの提出状況・管理</h2>
+                      <p className="text-sm font-medium text-gray-500">配信した課題ごとに、提出状況・提出物・未提出者・フィードバックをまとめて確認できます。</p>
                     </div>
                     <span className="text-xs font-bold bg-orange-50 text-orange-700 px-3 py-1.5 rounded-xl">
                       所属生徒 {schoolStudents.length} 名
@@ -3183,7 +3201,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-6">
                         <div className="border-b border-gray-100 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                           <div>
-                            <span className="text-xs font-bold text-orange-600">選択中の課題分析</span>
+                            <span className="text-xs font-bold text-orange-600">選択中の課題</span>
                             <h3 className="text-xl font-bold text-gray-900">{activeAssign.title}</h3>
                             <p className="text-xs font-medium text-gray-500 mt-1">{activeAssign.description}</p>
                           </div>
@@ -3205,7 +3223,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
                           <div className="space-y-3">
                             <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
                               <CheckCircle2 className="w-4 h-4 text-emerald-600" /> 提出者一覧・個別回答閲覧 ({submittedList.length}名)
@@ -3218,10 +3236,17 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   const sub = activeAssign.submissions[student.id];
                                   const fileName = sub.submittedFile ? (typeof sub.submittedFile === 'string' ? sub.submittedFile : sub.submittedFile.name) : null;
                                   return (
-                                    <div key={student.id} className="p-4 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs space-y-2.5">
-                                      <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
-                                        <span className="font-bold text-gray-900 text-sm">{student.name} <span className="text-xs font-normal text-gray-500">({student.class}・出席番号 {(student as any).attendance_number ?? "未設定"})</span></span>
-                                        <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">{sub.submittedAt}{sub.late && <strong className="ml-2 text-rose-700">遅れ</strong>}</span>
+                                    <div key={student.id} className="min-w-0 p-4 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs space-y-3">
+                                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 border-b border-emerald-100 pb-3">
+                                        <div className="min-w-0">
+                                          <p className="font-bold text-gray-900 text-sm break-words">{student.name}</p>
+                                          <p className="text-xs font-medium text-gray-500 mt-0.5">{student.class}・出席番号 {(student as any).attendance_number ?? "未設定"}</p>
+                                        </div>
+                                        <div className="sm:text-right shrink-0">
+                                          <p className="text-[11px] font-bold text-gray-400">提出日時</p>
+                                          <p className="text-xs font-bold text-emerald-700 mt-0.5">{formatDisplayDateTime(sub.submittedAt)}</p>
+                                          {sub.late && <span className="inline-block mt-1 text-[11px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">期限後提出</span>}
+                                        </div>
                                       </div>
                                       
                                       <div className="space-y-1">
@@ -3231,7 +3256,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                         </p>
                                       </div>
 
-                                      <form className="space-y-2" onSubmit={e=>{e.preventDefault();const form=e.currentTarget;const note=String(new FormData(form).get('feedback')||'').trim();if(!note)return;setStudentFeedbackMessages([{id:Date.now(),assignmentId:String(activeAssign.id),schoolId,studentId:student.id,teacherName:loggedInTeacher.name,paperTitle:activeAssign.title,fileName:fileName||'',result:{corrections:[],advice:[],nextExperiments:[]},note,sentAt:new Date().toISOString(),read:false},...studentFeedbackMessages]);form.reset();}}><textarea name="feedback" required maxLength={10000} aria-label="課題へのフィードバック" placeholder="この提出物へのフィードバック" className="w-full border rounded-lg p-3"/><button className="bg-orange-100 p-2 rounded-lg">生徒にフィードバックを送る</button></form>
+                                      <form className="space-y-2 rounded-xl border border-orange-100 bg-white p-3" onSubmit={e=>{e.preventDefault();const form=e.currentTarget;const note=String(new FormData(form).get('feedback')||'').trim();if(!note)return;setStudentFeedbackMessages([{id:Date.now(),assignmentId:String(activeAssign.id),schoolId,studentId:student.id,teacherName:loggedInTeacher.name,paperTitle:activeAssign.title,fileName:fileName||'',result:{corrections:[],advice:[],nextExperiments:[]},note,sentAt:new Date().toISOString(),read:false},...studentFeedbackMessages]);form.reset();}}><label className="block text-xs font-bold text-gray-600">この提出物へのフィードバック<textarea name="feedback" required maxLength={10000} aria-label="課題へのフィードバック" placeholder="コメントを入力..." className="mt-1.5 w-full min-h-20 border border-gray-200 rounded-lg p-3 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-300"/></label><div className="flex justify-end"><button className="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold px-3 py-2 rounded-lg">フィードバックを送る</button></div></form>
                                       {fileName ? (
                                         <div className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-emerald-200/60">
                                           <span className="text-emerald-800 font-bold flex items-center gap-1.5 truncate pr-2">
@@ -3260,12 +3285,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             </h4>
                             <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
                               {unsubmittedList.map(student => (
-                                <div key={student.id} className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs flex items-center justify-between">
-                                  <div>
-                                    <span className="font-bold text-gray-900">{student.name}</span>
-                                    <span className="ml-2 text-gray-400 font-medium">({student.class} / {student.id})</span>
+                                <div key={student.id} className="min-w-0 p-3.5 bg-gray-50 rounded-xl border border-gray-200 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-gray-900 text-sm break-words">{student.name}</p>
+                                    <p className="text-gray-500 font-medium mt-0.5">{student.class}・出席番号 {(student as any).attendance_number ?? "未設定"}</p>
                                   </div>
-                                  <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded">未提出</span>
+                                  <span className="self-start sm:self-auto shrink-0 text-xs font-bold bg-rose-100 text-rose-700 px-2.5 py-1 rounded-full">未提出</span>
                                 </div>
                               ))}
                             </div>
@@ -3355,17 +3380,17 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   <div className="space-y-3">
                     <h3 className="text-sm font-bold text-gray-900">配信中の課題一覧</h3>
                     {schoolAssignments.map(assign => (
-                      <div key={assign.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-start justify-between gap-4">
-                        <div className="space-y-1">
+                      <div key={assign.id} role="button" tabIndex={0} onClick={()=>{setProgressSelectedAssignId(assign.id);setCurrentTab('課題管理');}} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setProgressSelectedAssignId(assign.id);setCurrentTab('課題管理');}}} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 cursor-pointer hover:border-orange-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-orange-300">
+                        <div className="space-y-1 min-w-0">
                           <span className="text-xs font-mono font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded">期限: {assign.deadline}</span>
                           <h4 className="font-bold text-gray-900 text-base">{assign.title}</h4>
                           <p className="text-xs text-gray-500">{assign.description}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => handleEditClick(assign)} className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
+                          <button aria-label="課題を編集" onClick={(e) => { e.stopPropagation(); handleEditClick(assign); }} className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
                             <Edit3 className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleDeleteAssignment(assign.id)} className="p-2 text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                          <button aria-label="課題を削除" onClick={(e) => { e.stopPropagation(); handleDeleteAssignment(assign.id); }} className="p-2 text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -4139,7 +4164,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <Bot className="w-3.5 h-3.5 text-gray-300 shrink-0" />
                                 <span className="text-xs font-bold text-gray-600 truncate">{m.paperTitle}</span>
-                                <span className="text-xs text-gray-400 shrink-0">{m.teacherName} 先生 | {m.sentAt}</span>
+                                <span className="text-xs text-gray-400 shrink-0">{m.teacherName} 先生 | {formatDisplayDateTime(m.sentAt)}</span>
                               </div>
                               <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
                             </button>
@@ -4158,7 +4183,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 )}
                                 <div>
                                   <h3 className="text-sm font-bold text-gray-900">{m.paperTitle}</h3>
-                                  <p className="text-xs text-gray-400">{m.teacherName} 先生 | {m.sentAt}</p>
+                                  <p className="text-xs text-gray-400">{m.teacherName} 先生 | {formatDisplayDateTime(m.sentAt)}</p>
                                 </div>
                               </div>
                               <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 flex items-center gap-1 shrink-0">
