@@ -3336,8 +3336,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         type="date"
                         value={newAssignDeadline}
                         onChange={(e) => setNewAssignDeadline(e.target.value)}
+                        onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
                         placeholder="例: 2026/08/10"
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 font-mono"
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 font-mono cursor-pointer"
                         required
                       />
                     </div>
