@@ -74,6 +74,11 @@ try{
  assert.match(detailSource,/大きく表示/);
  assert.match(detailSource,/AI Research Insight フルスクリーン表示/);
  assert.match(detailSource,/LTI AI RESEARCH INSIGHT/);
+ assert.match(detailSource,/z-\[999\]/);
+ assert.match(detailSource,/max-w-5xl/);
+ assert.match(detailSource,/text-\[15px\] leading-7/);
+ assert.match(detailSource,/document\.body\.style\.overflow='hidden'/);
+ assert.match(detailSource,/leading-6 text-violet-900/);
  assert.match(detailSource,/<InsightBody expanded\/>/);
  assert.match(detailSource,/xl:grid-cols-\[minmax\(0,1\.65fr\)_minmax\(360px,0\.8fr\)\]/);
  assert.doesNotMatch(detailSource,/xl:grid-cols-\[minmax\(0,1\.4fr\)_minmax\(440px,1fr\)\]/);

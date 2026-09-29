@@ -26,15 +26,15 @@ export function ResearchDetail({
  const [insightExpanded,setInsightExpanded]=useState(false);
 
  useEffect(()=>{let active=true;setEngagementMessage('');void (async()=>{try{if(trackView)await recordPaperView(paper.id);const loaded=await loadPaperEngagement([paper.id]);if(!active)return;setEngagement(loaded.metrics[String(paper.id)]||{views:0,citations:0,bookmarks:0});setBookmarked(loaded.bookmarked.has(String(paper.id)));}catch{}})();return()=>{active=false;};},[paper.id,trackView]);
- useEffect(()=>{if(!insightExpanded)return;const close=(e:KeyboardEvent)=>{if(e.key==='Escape')setInsightExpanded(false);};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[insightExpanded]);
+ useEffect(()=>{if(!insightExpanded)return;const previous=document.body.style.overflow;document.body.style.overflow='hidden';const close=(e:KeyboardEvent)=>{if(e.key==='Escape')setInsightExpanded(false);};window.addEventListener('keydown',close);return()=>{window.removeEventListener('keydown',close);document.body.style.overflow=previous;};},[insightExpanded]);
 
  async function toggleBookmark(){if(engagementBusy)return;setEngagementBusy(true);setEngagementMessage('');try{const before=bookmarked;const next=await togglePaperBookmark(paper.id);setBookmarked(next);if(next!==before)setEngagement(v=>({...v,bookmarks:Math.max(0,v.bookmarks+(next?1:-1))}));setEngagementMessage(next?'ブックマークに保存しました。':'ブックマークを解除しました。');}catch{setEngagementMessage('ブックマークを更新できませんでした。');}finally{setEngagementBusy(false);}}
  async function cite(){if(engagementBusy)return;setEngagementBusy(true);setEngagementMessage('');try{await copyText(formatPaperCitation(paper));const citations=await recordPaperCitation(paper.id);setEngagement(v=>({...v,citations}));setEngagementMessage('引用情報をクリップボードにコピーしました。');}catch{setEngagementMessage('引用情報をコピーできませんでした。');}finally{setEngagementBusy(false);}}
 
  function InsightBody({expanded=false}:{expanded?:boolean}){
-  const cardClass=expanded?'bg-white border border-slate-200 rounded-2xl p-6 md:p-7 space-y-4':'bg-white border border-slate-200 rounded-xl p-4 space-y-3';
-  const bodyText=expanded?'text-base leading-8 text-slate-700':'text-xs leading-relaxed text-slate-600';
-  const itemText=expanded?'text-base leading-8 text-slate-700':'text-xs leading-relaxed text-slate-600';
+  const cardClass=expanded?'bg-white border border-slate-200 rounded-2xl p-5 md:p-6 space-y-3':'bg-white border border-slate-200 rounded-xl p-4 space-y-3';
+  const bodyText=expanded?'text-[15px] leading-7 text-slate-700':'text-xs leading-relaxed text-slate-600';
+  const itemText=expanded?'text-[15px] leading-7 text-slate-700':'text-xs leading-relaxed text-slate-600';
   return <SavedInsightReveal key={String(paper.id)} enabled={!!result}>
    <section className={cardClass}>
     <h3 className={`font-bold flex gap-2 items-center ${expanded?'text-lg':'text-sm'}`}><Lightbulb className={`${expanded?'w-5 h-5':'w-4 h-4'} text-amber-500`}/>この研究の着眼点<span className="ml-auto text-[10px] bg-amber-50 text-amber-700 rounded-full px-2 py-1">AI整理</span></h3>
@@ -42,12 +42,12 @@ export function ResearchDetail({
    </section>
    <section className={cardClass}>
     <h3 className={`font-bold flex gap-2 items-center ${expanded?'text-lg':'text-sm'}`}><FileText className={`${expanded?'w-5 h-5':'w-4 h-4'} text-emerald-600`}/>研究から分かったこと<span className="ml-auto text-[10px] bg-emerald-50 text-emerald-700 rounded-full px-2 py-1">AI要約</span></h3>
-    {result?.summary.length?<ul className={expanded?'space-y-4':'space-y-2'}>{result.summary.slice(1).map((s,i)=><li key={i} className={`flex gap-2 ${itemText}`}><span className="text-emerald-600">●</span><span>{s}</span></li>)}</ul>:<p className={expanded?'text-base text-slate-400':'text-xs text-slate-400'}>内容はまだ整理されていません。</p>}
+    {result?.summary.length?<ul className={expanded?'space-y-3':'space-y-2'}>{result.summary.slice(1).map((s,i)=><li key={i} className={`flex gap-2 ${itemText}`}><span className="text-emerald-600">●</span><span>{s}</span></li>)}</ul>:<p className={expanded?'text-base text-slate-400':'text-xs text-slate-400'}>内容はまだ整理されていません。</p>}
    </section>
    <section className={cardClass}>
     <h3 className={`font-bold flex gap-2 items-center ${expanded?'text-lg':'text-sm'}`}><Lightbulb className={`${expanded?'w-5 h-5':'w-4 h-4'} text-violet-600`}/>次につながる問い</h3>
     <p className={expanded?'text-sm text-slate-500':'text-[11px] text-slate-500'}>未検証のアイデアです。準備物や代替案を確認し、指導者と相談して計画しましょう。</p>
-    {result?result.suggestions.map((s,i)=><div key={i} className={`${expanded?'text-base space-y-3':'text-xs space-y-2'} border-t border-slate-100 pt-3`}><h4 className="font-bold text-emerald-800">{s.title}</h4><p className={`${expanded?'leading-8':'leading-relaxed'} text-slate-600 whitespace-pre-wrap`}>{s.description}</p><div className="flex flex-wrap gap-1">{s.tags.map(t=><span key={t} className={`${expanded?'text-xs':'text-[10px]'} bg-emerald-50 text-emerald-700 rounded px-2 py-1`}>{t}</span>)}</div></div>):<p className={expanded?'text-base text-slate-400':'text-xs text-slate-400'}>提案はまだ保存されていません。</p>}
+    {result?result.suggestions.map((s,i)=><div key={i} className={`${expanded?'text-[15px] space-y-2.5':'text-xs space-y-2'} border-t border-slate-100 pt-3`}><h4 className="font-bold text-emerald-800">{s.title}</h4><p className={`${expanded?'leading-7':'leading-relaxed'} text-slate-600 whitespace-pre-wrap`}>{s.description}</p><div className="flex flex-wrap gap-1">{s.tags.map(t=><span key={t} className={`${expanded?'text-xs':'text-[10px]'} bg-emerald-50 text-emerald-700 rounded px-2 py-1`}>{t}</span>)}</div></div>):<p className={expanded?'text-base text-slate-400':'text-xs text-slate-400'}>提案はまだ保存されていません。</p>}
    </section>
    {result?.evaluation&&<div className={expanded?'pt-2':'pt-1'}><ResearchEvaluation value={result.evaluation} showChart={showEvaluation} showScores={showEvaluation}/></div>}
    {result&&<div className={`${expanded?'text-sm':'text-[11px]'} text-slate-500 space-y-1`}><p>解析範囲：{result.basis}</p><p>生成日時：{new Date(result.generatedAt).toLocaleString('ja-JP')}</p></div>}
@@ -95,7 +95,7 @@ export function ResearchDetail({
    </aside>
   </div>
 
-  {insightExpanded&&<div className="fixed inset-0 z-[100] bg-violet-50" role="dialog" aria-modal="true" aria-label="AI Research Insight フルスクリーン表示">
+  {insightExpanded&&<div className="fixed inset-0 z-[999] bg-violet-50" role="dialog" aria-modal="true" aria-label="AI Research Insight フルスクリーン表示">
    <div className="flex h-full w-full flex-col overflow-hidden bg-violet-50">
     <div className="shrink-0 flex items-center justify-between gap-4 border-b border-violet-200 bg-white px-5 md:px-8 py-4 shadow-sm">
      <div className="min-w-0">
@@ -106,8 +106,8 @@ export function ResearchDetail({
      <button type="button" onClick={()=>setInsightExpanded(false)} className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-violet-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-800"><X className="w-5 h-5"/>閉じる</button>
     </div>
     <div className="flex-1 overflow-y-auto px-4 py-5 md:px-8 md:py-8">
-     <div className="mx-auto max-w-6xl space-y-5">
-      <p className="rounded-2xl border border-violet-200 bg-white p-4 md:p-5 text-sm leading-7 text-violet-900">LTIのAIが生成した参考情報です。要約・評価理由・継続研究の提案は、原論文と照らし合わせながら確認してください。</p>
+     <div className="mx-auto max-w-5xl space-y-4">
+      <p className="rounded-2xl border border-violet-200 bg-white p-4 text-sm leading-6 text-violet-900">LTIのAIが生成した参考情報です。要約・評価理由・継続研究の提案は、原論文と照らし合わせながら確認してください。</p>
       <InsightBody expanded/>
      </div>
     </div>
