@@ -156,6 +156,7 @@ try{
  assert.match(cloudSource,/スクロールで全ページを連続閲覧/);
  assert.match(cloudSource,/pdf-page-\$\{pageNumber\}/);
  assert.match(cloudSource,/scrollIntoView/);
+ assert.match(cloudSource,/Math\.min\(Math\.max\(window\.devicePixelRatio\|\|1,2\),2\.5\)/);
  assert.match(cloudSource,/e\.key==='Escape'/);
  assert.match(cloudSource,/pdfjs-dist/);
  assert.match(cloudSource,/bg-slate-950 text-white flex flex-col/);
