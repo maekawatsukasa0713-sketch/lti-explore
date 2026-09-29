@@ -1311,13 +1311,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
   const [currentTeacherId, setCurrentTeacherId] = useState(profile.id);
   const [editTeacherName, setEditTeacherName] = useState(profile.name);
-  const [teacherNewPass, setTeacherNewPass] = useState('');
   const [teacherProfileMessage, setTeacherProfileMessage] = useState('');
   const [teacherAccountMessage, setTeacherAccountMessage] = useState('');
 
   const [currentStudentId, setCurrentStudentId] = useState(profile.id);
   const [editStudentName, setEditStudentName] = useState(profile.name);
-  const [studentNewPass, setStudentNewPass] = useState('');
   const [studentProfileMessage, setStudentProfileMessage] = useState('');
 
   // 生徒側：課題提出用のステート
@@ -1325,10 +1323,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [studentSubmissionFile, setStudentSubmissionFile] = useState<File | null>(null);
   const [studentSubmitSuccessMsg, setStudentSubmitSuccessMsg] = useState('');
 
-  // 【要件①用】生徒自身の表示名およびパスワード変更の処理
+  // 生徒自身の表示名変更
   const handleStudentProfileUpdate = async (e: React.FormEvent) => {
       e.preventDefault();
-      try { await saveMyProfile(editStudentName, studentNewPass); await cloud.reload(); setStudentProfileMessage('プロフィールを更新しました。'); setStudentNewPass(''); }
+      try { await saveMyProfile(editStudentName, ''); await cloud.reload(); setStudentProfileMessage('プロフィールを更新しました。'); }
       catch (error) { setStudentProfileMessage((error as Error).message || '更新できませんでした'); }
     };
 
@@ -2877,7 +2875,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
     const handleTeacherProfileUpdate = async (e: React.FormEvent) => {
       e.preventDefault();
-      try { await saveMyProfile(editTeacherName, teacherNewPass); await cloud.reload(); setTeacherProfileMessage('プロフィールを更新しました。'); setTeacherNewPass(''); }
+      try { await saveMyProfile(editTeacherName, ''); await cloud.reload(); setTeacherProfileMessage('プロフィールを更新しました。'); }
       catch (error) { setTeacherProfileMessage((error as Error).message || '更新できませんでした'); }
     };
 
@@ -4089,7 +4087,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                 <div className="space-y-6 max-w-2xl">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                     <h2 className="text-lg font-bold text-gray-900">教員アカウント設定</h2>
-                    <p className="text-xs font-medium text-gray-500">ご自身の表示名やログイン用パスワードを変更できます。</p>
+                    <p className="text-xs font-medium text-gray-500">ご自身の表示名を変更できます。パスワードは画面右下の「パスワード変更」から変更してください。</p>
                   </div>
 
                   {teacherProfileMessage && (
@@ -4117,17 +4115,6 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         onChange={(e) => setEditTeacherName(e.target.value)}
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
                         required
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-700">新しいパスワード (変更時のみ入力)</label>
-                      <input
-                        type="password"
-                        value={teacherNewPass}
-                        onChange={(e) => setTeacherNewPass(e.target.value)}
-                        placeholder="変更しない場合は空欄のまま"
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
                       />
                     </div>
 
@@ -4733,11 +4720,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
               ) : currentTab === 'LTI運営にメッセージ' ? (
                 <SupportMessages/>
               ) : currentTab === 'アカウント設定' ? (
-                /* 【要件①用】生徒側：表示名・パスワード変更画面 */
+                /* 生徒側：表示名変更画面 */
                 <div className="space-y-6 max-w-2xl">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                     <h2 className="text-lg font-bold text-gray-900">生徒アカウント設定</h2>
-                    <p className="text-xs font-medium text-gray-500">ご自身の表示名（生徒氏名）やログインパスワードを変更できます。</p>
+                    <p className="text-xs font-medium text-gray-500">ご自身の表示名（生徒氏名）を変更できます。パスワードは画面右下の「パスワード変更」から変更してください。</p>
                   </div>
 
                   {studentProfileMessage && (
@@ -4765,17 +4752,6 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         onChange={(e) => setEditStudentName(e.target.value)}
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                         required
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-700">新しいパスワード (変更する場合のみ入力)</label>
-                      <input
-                        type="password"
-                        value={studentNewPass}
-                        onChange={(e) => setStudentNewPass(e.target.value)}
-                        placeholder="変更しない場合は空欄のまま"
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                       />
                     </div>
 
