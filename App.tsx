@@ -14,7 +14,7 @@ import { ScholarlySearch } from './ScholarlySearch';
 import React, { useState, useEffect } from 'react';
 import {PublishedFields,AdminAnalytics} from './analytics';
 import { CloudGate, useCloud, useCloudList, saveMyProfile, uploadPdf, PdfView, type Profile } from './cloud';
-import { Home, BarChart3, Users, Settings, Search, LogOut, Lock, User, Check, ArrowLeft, UserCheck, ShieldCheck, UserCog, Building2, BookOpen, FileText, Bot, Trophy, ChevronRight, Upload, Send, Edit3, Trash2, CheckCircle2, XCircle, PieChart, FileUp, Eye, EyeOff, Clock, FileCheck, Globe, LockKeyhole, AlertCircle, Lightbulb, FlaskConical, GripVertical, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Home, BarChart3, Users, Settings, Search, LogOut, Lock, User, Check, ArrowLeft, UserCheck, ShieldCheck, UserCog, Building2, BookOpen, FileText, Bot, Trophy, ChevronRight, Upload, Send, Edit3, Trash2, CheckCircle2, XCircle, PieChart, FileUp, Eye, EyeOff, Clock, FileCheck, Globe, LockKeyhole, AlertCircle, Lightbulb, FlaskConical, GripVertical, PanelLeftClose, PanelLeftOpen, Megaphone, CalendarDays, ExternalLink } from 'lucide-react';
 
 // ----------------------------------------
 // 型定義
@@ -78,6 +78,8 @@ type ContestItem = {
   deadlineDate?: string; // YYYY-MM-DD形式。期限切れ判定に使用
   description: string;
   url?: string;
+  brochurePath?: string;
+  brochureName?: string;
   targetType: 'all' | 'specific'; // 'all': 一斉公開, 'specific': 特定校のみ
   targetSchoolIds?: string[];      // 特定校の場合の学校IDリスト
 };
@@ -88,6 +90,108 @@ type NoticeItem = {
   date: string;
   content: string;
 };
+
+const safeExternalUrl = (url?: string) => {
+  const value = (url || '').trim();
+  return /^https?:\/\//i.test(value) ? value : '';
+};
+
+function ContestLinkThumbnail({ url, title }: { url?: string; title: string }) {
+  const [imageUrl, setImageUrl] = useState('');
+  const href = safeExternalUrl(url);
+
+  useEffect(() => {
+    let alive = true;
+    let probe: HTMLImageElement | null = null;
+    setImageUrl('');
+    if (!href) return;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 7000);
+
+    fetch('/api/link-preview?url=' + encodeURIComponent(href), { signal: controller.signal })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!alive) return;
+        const candidate = typeof data?.image === 'string' ? data.image : '';
+        if (!candidate) return;
+
+        // Only render the thumbnail after the browser has actually loaded it.
+        // Broken/unsupported preview images simply disappear instead of showing
+        // a broken-image icon or alt text.
+        probe = new Image();
+        probe.onload = () => { if (alive) setImageUrl(candidate); };
+        probe.onerror = () => { if (alive) setImageUrl(''); };
+        probe.src = candidate;
+      })
+      .catch(() => {})
+      .finally(() => window.clearTimeout(timer));
+
+    return () => {
+      alive = false;
+      controller.abort();
+      window.clearTimeout(timer);
+      if (probe) {
+        probe.onload = null;
+        probe.onerror = null;
+      }
+    };
+  }, [href]);
+
+  if (!href || !imageUrl) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={title + ' の公式ページを開く'}
+      className="block h-24 w-32 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-50"
+    >
+      <img
+        src={imageUrl}
+        alt=""
+        loading="lazy"
+        onError={() => setImageUrl('')}
+        className="h-full w-full object-cover"
+      />
+    </a>
+  );
+}
+
+function ContestCard({ contest, expired = false, audience, actions }: { contest: ContestItem; expired?: boolean; audience?: React.ReactNode; actions?: React.ReactNode }) {
+  const href = safeExternalUrl(contest.url);
+  return (
+    <article className={`rounded-2xl border border-gray-200 bg-white p-5 shadow-sm ${expired ? 'opacity-65' : ''}`}>
+      <div className="flex items-start gap-4">
+        <ContestLinkThumbnail url={contest.url} title={contest.title} />
+        <div className="min-w-0 flex-1 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">{contest.category}</span>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400"><CalendarDays className="h-3.5 w-3.5" />{contest.date}</span>
+            {expired && <span className="rounded-md bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-500">期限切れ</span>}
+          </div>
+          <div>
+            <h3 className="text-base font-bold leading-snug text-gray-900">{contest.title}</h3>
+            <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-gray-600">{contest.description}</p>
+          </div>
+          {audience}
+          <div className="flex flex-wrap items-center gap-3">
+            {href && <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900">公式・申込ページ <ExternalLink className="h-3.5 w-3.5" /></a>}
+            {actions}
+          </div>
+        </div>
+      </div>
+      {contest.brochurePath && (
+        <details className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-gray-50/70">
+          <summary className="cursor-pointer list-none px-3.5 py-2.5 text-xs font-bold text-gray-700">パンフレットを小さく表示</summary>
+          <div className="border-t border-gray-200 bg-white p-2.5">
+            <PdfView path={contest.brochurePath} label={contest.brochureName || contest.title} compact />
+          </div>
+        </details>
+      )}
+    </article>
+  );
+}
 
 type LtiAdminUser = {
   id: string;
@@ -813,6 +917,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [newContestDeadlineDate, setNewContestDeadlineDate] = useState('');
   const [newContestDesc, setNewContestDesc] = useState('');
   const [newContestUrl, setNewContestUrl] = useState('');
+  const [newContestBrochureFile, setNewContestBrochureFile] = useState<File | null>(null);
+  const [contestBrochureUploadProgress, setContestBrochureUploadProgress] = useState<number | null>(null);
   const [newContestTargetType, setNewContestTargetType] = useState<'all' | 'specific'>('all');
   const [newContestTargetSchools, setNewContestTargetSchools] = useState<string[]>([]);
   const [editingContestId, setEditingContestId] = useState<number | null>(null);
@@ -833,6 +939,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setNewContestDeadlineDate('');
     setNewContestDesc('');
     setNewContestUrl('');
+    setNewContestBrochureFile(null);
+    setContestBrochureUploadProgress(null);
     setNewContestTargetType('all');
     setNewContestTargetSchools([]);
   };
@@ -845,41 +953,51 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setNewContestDeadlineDate(c.deadlineDate || '');
     setNewContestDesc(c.description);
     setNewContestUrl(c.url || '');
+    setNewContestBrochureFile(null);
+    setContestBrochureUploadProgress(null);
     setNewContestTargetType(c.targetType);
     setNewContestTargetSchools(c.targetSchoolIds || []);
     window.scrollTo(0, 0);
   };
 
-  const handleCreateContest = (e: React.FormEvent) => {
+  const handleCreateContest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newContestTitle.trim() || !newContestDate.trim()) return;
 
+    const existing = editingContestId !== null ? contests.find(c => c.id === editingContestId) : undefined;
+    let brochurePath = existing?.brochurePath;
+    let brochureName = existing?.brochureName;
+
+    if (newContestBrochureFile) {
+      try {
+        setContestBrochureUploadProgress(0);
+        brochurePath = await uploadPdf(newContestBrochureFile, percent => setContestBrochureUploadProgress(percent));
+        brochureName = newContestBrochureFile.name;
+      } catch (error) {
+        setContestMessage(`パンフレットをアップロードできませんでした: ${(error as Error).message}`);
+        setContestBrochureUploadProgress(null);
+        return;
+      }
+    }
+
+    const payload = {
+      title: newContestTitle.trim(),
+      category: newContestCategory.trim(),
+      date: newContestDate.trim(),
+      deadlineDate: newContestDeadlineDate || undefined,
+      description: newContestDesc.trim() || '詳細説明はありません。',
+      url: safeExternalUrl(newContestUrl) || undefined,
+      brochurePath,
+      brochureName,
+      targetType: newContestTargetType,
+      targetSchoolIds: newContestTargetType === 'specific' ? newContestTargetSchools : undefined,
+    };
+
     if (editingContestId !== null) {
-      // 編集モード：既存のコンテストを更新して再公開
-      setContests(contests.map(c => c.id === editingContestId ? {
-        ...c,
-        title: newContestTitle,
-        category: newContestCategory,
-        date: newContestDate,
-        deadlineDate: newContestDeadlineDate || undefined,
-        description: newContestDesc || '詳細説明はありません。',
-        url: newContestUrl.trim() || undefined,
-        targetType: newContestTargetType,
-        targetSchoolIds: newContestTargetType === 'specific' ? newContestTargetSchools : undefined
-      } : c));
+      setContests(contests.map(c => c.id === editingContestId ? { ...c, ...payload } : c));
       setContestMessage('学会・コンテスト情報を更新し、再公開しました！');
     } else {
-      const newContest: ContestItem = {
-        id: Date.now(),
-        title: newContestTitle,
-        category: newContestCategory,
-        date: newContestDate,
-        deadlineDate: newContestDeadlineDate || undefined,
-        description: newContestDesc || '詳細説明はありません。',
-        url: newContestUrl.trim() || undefined,
-        targetType: newContestTargetType,
-        targetSchoolIds: newContestTargetType === 'specific' ? newContestTargetSchools : undefined
-      };
+      const newContest: ContestItem = { id: Date.now(), ...payload };
       setContests([newContest, ...contests]);
       setContestMessage('学会・コンテスト情報を正常に配信しました！');
     }
@@ -1657,6 +1775,26 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       />
                     </div>
 
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-700">パンフレットPDF（任意）</label>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        onChange={(e) => setNewContestBrochureFile(e.target.files?.[0] || null)}
+                        className="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                      />
+                      <p className="text-[11px] text-gray-400">公式URLのページ画像は一覧カード左側に自動表示します。パンフレットはカード内で小さく開けます。</p>
+                      {editingContestId !== null && contests.find(c=>c.id===editingContestId)?.brochureName && !newContestBrochureFile && (
+                        <p className="text-[11px] text-gray-500">現在のパンフレット: <span className="font-bold">{contests.find(c=>c.id===editingContestId)?.brochureName}</span></p>
+                      )}
+                      {contestBrochureUploadProgress !== null && (
+                        <div className="space-y-1">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full bg-indigo-500" style={{width:`${contestBrochureUploadProgress}%`}} /></div>
+                          <p className="text-[11px] text-gray-400">アップロード {contestBrochureUploadProgress}%</p>
+                        </div>
+                      )}
+                    </div>
+
                     {/* 公開範囲設定ラジオボタン */}
                     <div className="space-y-2 pt-2 border-t border-gray-100">
                       <label className="text-xs font-bold text-gray-700">配信範囲の選択</label>
@@ -1728,48 +1866,14 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     <div className="space-y-3">
                       {contests.map(c => {
                         const expired = isContestExpired(c);
-                        return (
-                        <div key={c.id} className={`bg-white p-5 rounded-2xl border shadow-sm flex items-start justify-between gap-4 ${expired ? 'border-gray-200 opacity-70' : 'border-gray-200'}`}>
-                          <div className="space-y-2 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">{c.category}</span>
-                              <span className="text-xs font-mono text-gray-400">{c.date}</span>
-                              {c.targetType === 'all' ? (
-                                <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                  <Globe className="w-3 h-3" /> 一斉公開
-                                </span>
-                              ) : (
-                                <span className="text-xs font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                  <LockKeyhole className="w-3 h-3" /> 限定公開 ({c.targetSchoolIds?.join(', ')})
-                                </span>
-                              )}
-                              {expired && (
-                                <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                  <Clock className="w-3 h-3" /> 期限切れ
-                                </span>
-                              )}
-                            </div>
-                            <h4 className="font-bold text-gray-900 text-sm">{c.title}</h4>
-                            <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>{c.url&&<a href={c.url} target="_blank" rel="noreferrer" className="inline-flex text-xs font-bold text-indigo-700 hover:text-indigo-900 underline underline-offset-2">詳細・申込ページ →</a>}
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => handleStartEditContest(c)}
-                              className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                              title="編集して再公開"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteContest(c.id)}
-                              className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                              title="削除"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                        );
+                        const audience = c.targetType === 'all'
+                          ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700"><Globe className="h-3.5 w-3.5" /> 全校公開</span>
+                          : <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700"><LockKeyhole className="h-3.5 w-3.5" /> 限定公開: {c.targetSchoolIds?.join(', ')}</span>;
+                        const actions = <span className="ml-auto inline-flex items-center gap-1">
+                          <button onClick={() => handleStartEditContest(c)} className="rounded-lg p-2 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600" title="編集して再公開"><Edit3 className="h-4 w-4" /></button>
+                          <button onClick={() => handleDeleteContest(c.id)} className="rounded-lg p-2 text-gray-400 hover:bg-rose-50 hover:text-rose-600" title="削除"><Trash2 className="h-4 w-4" /></button>
+                        </span>;
+                        return <ContestCard key={c.id} contest={c} expired={expired} audience={audience} actions={actions} />;
                       })}
                     </div>
                   </div>
@@ -2661,7 +2765,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const publishedList = papers.filter(p => p.status === '公開中');
 
     // 教員側で閲覧可能なコンテスト（一斉公開 または 自校が指定された公開）
-    const visibleContests = contests.filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)));
+    const visibleContests = contests
+      .filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)))
+      .sort((a, b) => Number(b.targetType === 'specific') - Number(a.targetType === 'specific'));
 
     const handleTeacherProfileUpdate = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -3038,21 +3144,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         現在案内中の学会・コンテストはありません。
                       </div>
                     ) : (
-                      visibleContests.map(c => (
-                        <div key={c.id} className={`bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-3 ${isContestExpired(c) ? 'opacity-60' : ''}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-orange-50 text-orange-700">{c.category}</span>
-                            <div className="flex items-center gap-2">
-                              {isContestExpired(c) && (
-                                <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">期限切れ</span>
-                              )}
-                              <span className="text-xs text-gray-400 font-mono">{c.date}</span>
-                            </div>
-                          </div>
-                          <h3 className="font-bold text-base text-gray-900">{c.title}</h3>
-                          <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>{c.url&&<a href={c.url} target="_blank" rel="noreferrer" className="inline-flex text-xs font-bold text-indigo-700 hover:text-indigo-900 underline underline-offset-2">詳細・申込ページ →</a>}
-                        </div>
-                      ))
+                      visibleContests.map(c => <ContestCard key={c.id} contest={c} expired={isContestExpired(c)} />)
                     )}
                   </div>
                 </div>
@@ -3978,7 +4070,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
 
     // 【要件②用】生徒側で閲覧可能なコンテスト（一斉公開 または 自校が指定された公開）
-    const visibleContests = contests.filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)));
+    const visibleContests = contests
+      .filter(c => c.targetType === 'all' || (c.targetSchoolIds && c.targetSchoolIds.includes(schoolId)))
+      .sort((a, b) => Number(b.targetType === 'specific') - Number(a.targetType === 'specific'));
 
     // 先生から送られたAI添削フィードバック（自分宛のもののみ、新しい順）
     const myFeedbackMessages = studentFeedbackMessages
@@ -4376,21 +4470,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         現在案内中の学会・コンテストはありません。
                       </div>
                     ) : (
-                      visibleContests.map(c => (
-                        <div key={c.id} className={`bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-3 ${isContestExpired(c) ? 'opacity-60' : ''}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-emerald-50 text-emerald-700">{c.category}</span>
-                            <div className="flex items-center gap-2">
-                              {isContestExpired(c) && (
-                                <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">期限切れ</span>
-                              )}
-                              <span className="text-xs text-gray-400 font-mono">{c.date}</span>
-                            </div>
-                          </div>
-                          <h3 className="font-bold text-base text-gray-900">{c.title}</h3>
-                          <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>{c.url&&<a href={c.url} target="_blank" rel="noreferrer" className="inline-flex text-xs font-bold text-indigo-700 hover:text-indigo-900 underline underline-offset-2">詳細・申込ページ →</a>}
-                        </div>
-                      ))
+                      visibleContests.map(c => <ContestCard key={c.id} contest={c} expired={isContestExpired(c)} />)
                     )}
                   </div>
                 </div>
