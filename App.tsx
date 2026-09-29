@@ -14,7 +14,7 @@ import { ScholarlySearch } from './ScholarlySearch';
 import React, { useState, useEffect } from 'react';
 import {PublishedFields,AdminAnalytics} from './analytics';
 import { CloudGate, useCloud, useCloudList, saveMyProfile, uploadPdf, PdfView, type Profile } from './cloud';
-import { Home, BarChart3, Users, Settings, Search, LogOut, Lock, User, Check, ArrowLeft, UserCheck, ShieldCheck, UserCog, Building2, BookOpen, FileText, Bot, Trophy, ChevronRight, Upload, Send, Edit3, Trash2, CheckCircle2, XCircle, PieChart, FileUp, Eye, EyeOff, Clock, FileCheck, Globe, LockKeyhole, AlertCircle, Lightbulb, FlaskConical, GripVertical, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Home, BarChart3, Users, Settings, Search, LogOut, Lock, User, Check, ArrowLeft, UserCheck, ShieldCheck, UserCog, Building2, BookOpen, FileText, Bot, Trophy, ChevronRight, Upload, Send, Edit3, Trash2, CheckCircle2, XCircle, PieChart, FileUp, Eye, EyeOff, Clock, FileCheck, Globe, LockKeyhole, AlertCircle, Lightbulb, FlaskConical, GripVertical, PanelLeftClose, PanelLeftOpen, Megaphone, CalendarDays, ExternalLink, Sparkles } from 'lucide-react';
 
 // ----------------------------------------
 // 型定義
@@ -82,12 +82,78 @@ type ContestItem = {
   targetSchoolIds?: string[];      // 特定校の場合の学校IDリスト
 };
 
+type NoticeCategory = '重要' | 'イベント' | 'アップデート' | '募集' | '一般';
+
 type NoticeItem = {
   id: number;
   title: string;
   date: string;
   content: string;
+  category?: NoticeCategory;
+  featured?: boolean;
+  linkUrl?: string;
+  linkLabel?: string;
 };
+
+const NOTICE_META: Record<NoticeCategory, { badge: string; icon: string; accent: string }> = {
+  '重要': { badge: 'bg-rose-100 text-rose-700 border-rose-200', icon: '!', accent: 'border-l-rose-500' },
+  'イベント': { badge: 'bg-violet-100 text-violet-700 border-violet-200', icon: 'EVENT', accent: 'border-l-violet-500' },
+  'アップデート': { badge: 'bg-sky-100 text-sky-700 border-sky-200', icon: 'UPDATE', accent: 'border-l-sky-500' },
+  '募集': { badge: 'bg-amber-100 text-amber-800 border-amber-200', icon: 'OPEN', accent: 'border-l-amber-500' },
+  '一般': { badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: 'INFO', accent: 'border-l-emerald-500' },
+};
+
+const safeNoticeUrl = (url?: string) => {
+  const value = (url || '').trim();
+  return /^https?:\/\//i.test(value) ? value : '';
+};
+
+function NoticeCard({ notice, featured = false }: { notice: NoticeItem; featured?: boolean }) {
+  const category: NoticeCategory = notice.category || '一般';
+  const meta = NOTICE_META[category];
+  const href = safeNoticeUrl(notice.linkUrl);
+
+  return (
+    <article className={`relative overflow-hidden rounded-2xl border border-gray-200 border-l-4 ${meta.accent} ${featured ? 'bg-gradient-to-br from-white via-indigo-50/70 to-emerald-50/70 p-5 shadow-sm' : 'bg-white p-4 shadow-sm'}`}>
+      {featured && (
+        <div className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-2.5 py-1 text-[10px] font-extrabold tracking-wide text-white">
+          <Sparkles className="h-3 w-3" /> NEW
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2 pr-16">
+        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-extrabold tracking-wide ${meta.badge}`}>
+          {meta.icon} · {category}
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400">
+          <CalendarDays className="h-3.5 w-3.5" /> {notice.date}
+        </span>
+      </div>
+      <h4 className={`mt-3 font-extrabold text-gray-900 ${featured ? 'text-base sm:text-lg' : 'text-sm'}`}>{notice.title}</h4>
+      <p className="mt-2 whitespace-pre-wrap text-xs leading-6 text-gray-600">{notice.content}</p>
+      {href && (
+        <a href={href} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-gray-700">
+          {notice.linkLabel?.trim() || '詳しく見る'} <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      )}
+    </article>
+  );
+}
+
+function NoticeFeed({ items, limit }: { items: NoticeItem[]; limit?: number }) {
+  const display = typeof limit === 'number' ? items.slice(0, limit) : items;
+  if (display.length === 0) return <p className="rounded-xl bg-gray-50 p-4 text-center text-xs italic text-gray-400">現在お知らせはありません。</p>;
+  const [latest, ...rest] = display;
+  return (
+    <div className="space-y-3">
+      <NoticeCard notice={latest} featured={latest.featured !== false} />
+      {rest.length > 0 && (
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {rest.map(n => <NoticeCard key={n.id} notice={n} featured={Boolean(n.featured)} />)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 type LtiAdminUser = {
   id: string;
@@ -898,6 +964,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   // 【要件③用】LTI運営側：お知らせ管理用ステート
   const [newNoticeTitle, setNewNoticeTitle] = useState('');
   const [newNoticeContent, setNewNoticeContent] = useState('');
+  const [newNoticeCategory, setNewNoticeCategory] = useState<NoticeCategory>('一般');
+  const [newNoticeFeatured, setNewNoticeFeatured] = useState(true);
+  const [newNoticeLinkUrl, setNewNoticeLinkUrl] = useState('');
+  const [newNoticeLinkLabel, setNewNoticeLinkLabel] = useState('');
   const [editingNoticeId, setEditingNoticeId] = useState<number | null>(null);
   const [noticeMessage, setNoticeMessage] = useState('');
 
@@ -905,12 +975,20 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setEditingNoticeId(null);
     setNewNoticeTitle('');
     setNewNoticeContent('');
+    setNewNoticeCategory('一般');
+    setNewNoticeFeatured(true);
+    setNewNoticeLinkUrl('');
+    setNewNoticeLinkLabel('');
   };
 
   const handleStartEditNotice = (n: NoticeItem) => {
     setEditingNoticeId(n.id);
     setNewNoticeTitle(n.title);
     setNewNoticeContent(n.content);
+    setNewNoticeCategory(n.category || '一般');
+    setNewNoticeFeatured(Boolean(n.featured));
+    setNewNoticeLinkUrl(n.linkUrl || '');
+    setNewNoticeLinkLabel(n.linkLabel || '');
     window.scrollTo(0, 0);
   };
 
@@ -918,12 +996,20 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     e.preventDefault();
     if (!newNoticeTitle.trim()) return;
     const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '/');
+    const noticePayload = {
+      title: newNoticeTitle.trim(),
+      content: newNoticeContent.trim() || '詳細はありません。',
+      category: newNoticeCategory,
+      featured: newNoticeFeatured,
+      linkUrl: safeNoticeUrl(newNoticeLinkUrl) || undefined,
+      linkLabel: newNoticeLinkLabel.trim() || undefined,
+    };
 
     if (editingNoticeId !== null) {
-      setNotices(notices.map(n => n.id === editingNoticeId ? { ...n, title: newNoticeTitle, content: newNoticeContent } : n));
+      setNotices(notices.map(n => n.id === editingNoticeId ? { ...n, ...noticePayload } : n));
       setNoticeMessage('お知らせを更新しました！');
     } else {
-      const newNotice: NoticeItem = { id: Date.now(), title: newNoticeTitle, date: todayStr, content: newNoticeContent || '詳細はありません。' };
+      const newNotice: NoticeItem = { id: Date.now(), date: todayStr, ...noticePayload };
       setNotices([newNotice, ...notices]);
       setNoticeMessage('お知らせを配信しました！生徒・教員のホーム画面に表示されます。');
     }
@@ -1501,7 +1587,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       </div>
                       <button type="button" onClick={()=>setLtiCurrentTab('お知らせ管理')} className="text-xs font-bold text-indigo-700 hover:text-indigo-900">お知らせ管理を開く →</button>
                     </div>
-                    {notices.length===0?<p className="text-xs text-gray-400 italic p-4 bg-gray-50 rounded-xl text-center">現在お知らせはありません。</p>:<div className="space-y-3">{notices.slice(0,5).map(n=><div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100"><div className="flex items-center justify-between gap-3"><h4 className="font-bold text-gray-900 text-xs">{n.title}</h4><span className="text-xs font-mono text-gray-400 shrink-0">{n.date}</span></div><p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap mt-1">{n.content}</p></div>)}</div>}
+                    <NoticeFeed items={notices} limit={5} />
                   </section>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1713,6 +1799,41 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         </div>
                       )}
                     </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-700">カテゴリ</label>
+                        <select value={newNoticeCategory} onChange={e=>setNewNoticeCategory(e.target.value as NoticeCategory)} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600">
+                          <option value="一般">一般</option>
+                          <option value="重要">重要</option>
+                          <option value="イベント">イベント</option>
+                          <option value="募集">募集</option>
+                          <option value="アップデート">アップデート</option>
+                        </select>
+                      </div>
+                      <label className="flex items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 cursor-pointer">
+                        <input type="checkbox" checked={newNoticeFeatured} onChange={e=>setNewNoticeFeatured(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
+                        <span><span className="block text-xs font-bold text-gray-800">強調表示する</span><span className="block text-[11px] text-gray-500 mt-0.5">ホームで大きなカードとして目立たせます</span></span>
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-700">リンクURL（任意）</label>
+                        <input type="url" value={newNoticeLinkUrl} onChange={e=>setNewNoticeLinkUrl(e.target.value)} placeholder="https://..." className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-700">ボタンの文言（任意）</label>
+                        <input type="text" value={newNoticeLinkLabel} onChange={e=>setNewNoticeLinkLabel(e.target.value)} placeholder="例：申込ページを見る" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600" />
+                      </div>
+                    </div>
+
+                    {(newNoticeTitle.trim() || newNoticeContent.trim()) && (
+                      <div className="space-y-2 border-t border-gray-100 pt-4">
+                        <p className="text-[11px] font-extrabold uppercase tracking-wider text-gray-400">配信プレビュー</p>
+                        <NoticeCard notice={{ id: editingNoticeId || 0, title: newNoticeTitle || 'お知らせタイトル', date: new Date().toISOString().split('T')[0].replace(/-/g, '/'), content: newNoticeContent || 'お知らせの本文がここに表示されます。', category: newNoticeCategory, featured: newNoticeFeatured, linkUrl: newNoticeLinkUrl, linkLabel: newNoticeLinkLabel }} featured={newNoticeFeatured} />
+                      </div>
+                    )}
 
                     <button
                       type="submit"
@@ -2394,25 +2515,13 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     ) : (
                       <div className="space-y-3">
                         {notices.map(n => (
-                          <div key={n.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-start justify-between gap-4">
-                            <div className="space-y-1 flex-1">
-                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
-                              <h4 className="font-bold text-gray-900 text-sm">{n.title}</h4>
-                              <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => handleStartEditNotice(n)}
-                                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                title="編集"
-                              >
+                          <div key={n.id} className="relative">
+                            <NoticeCard notice={n} featured={Boolean(n.featured)} />
+                            <div className="absolute right-3 bottom-3 flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white/95 p-1 shadow-sm backdrop-blur">
+                              <button onClick={() => handleStartEditNotice(n)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="編集">
                                 <Edit3 className="w-4 h-4" />
                               </button>
-                              <button
-                                onClick={() => handleDeleteNotice(n.id)}
-                                className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                title="削除"
-                              >
+                              <button onClick={() => handleDeleteNotice(n.id)} className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="削除">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
@@ -3002,21 +3111,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                     <h3 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">📢 LTI運営からのお知らせ</h3>
-                    {notices.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">現在お知らせはありません。</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {notices.map(n => (
-                          <div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                            <div className="flex items-center justify-between mb-1">
-                              <h4 className="font-bold text-gray-900 text-xs">{n.title}</h4>
-                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
-                            </div>
-                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <NoticeFeed items={notices} />
                   </div>
                 </div>
 
@@ -4145,21 +4240,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                     <h3 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">📢 LTI運営からのお知らせ</h3>
-                    {notices.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">現在お知らせはありません。</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {notices.map(n => (
-                          <div key={n.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                            <div className="flex items-center justify-between mb-1">
-                              <h4 className="font-bold text-gray-900 text-xs">{n.title}</h4>
-                              <span className="text-xs font-mono text-gray-400">{n.date}</span>
-                            </div>
-                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <NoticeFeed items={notices} />
                   </div>
                 </div>
 
