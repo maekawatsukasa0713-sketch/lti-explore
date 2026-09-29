@@ -33,7 +33,7 @@ export function ResearchDetail({
 
  function InsightBody(){
   return <SavedInsightReveal key={String(paper.id)} enabled={!!result}>
-   {result?.evaluation&&<ResearchEvaluation value={result.evaluation} showChart={showEvaluation}/>}
+   {result?.evaluation&&<ResearchEvaluation value={result.evaluation} showChart={showEvaluation} showScores={showEvaluation}/>} 
    <section className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
     <h3 className="font-bold flex gap-2 items-center"><Lightbulb className="w-5 h-5 text-amber-500"/>この研究の着眼点<span className="ml-auto text-[10px] bg-amber-50 text-amber-700 rounded-full px-2 py-1">AI整理</span></h3>
     {result?.summary.length?<p className="text-sm leading-relaxed text-slate-600">{result.summary[0]}</p>:<p className="text-sm text-slate-400">着眼点はまだ整理されていません。</p>}
