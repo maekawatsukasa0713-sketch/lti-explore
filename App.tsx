@@ -7,6 +7,7 @@ import {InsightApproval} from './InsightApproval';
 import {featureMode,FeatureUnavailable} from './SchoolFeatures';
 import { ResearchLibrary } from './ResearchLibrary';
 import { ResearchDetail } from './ResearchDetail';
+import { ResearchThemeFinder } from './ResearchThemeFinder';
 import { ReviewPanels } from './ReviewPanels';
 import { analysisInput, invokeResearchAI } from './research-ai';
 import { ScholarlySearch } from './ScholarlySearch';
@@ -3076,6 +3077,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const teacherMenuBase = [
       { name: 'ホーム', icon: Home },
       { name: 'みんなの論文', icon: BookOpen },
+      { name: '研究テーマを見つける', icon: Lightbulb },
       { name: '学会・コンテスト', icon: Trophy },
       { name: '教材', icon: FileUp },
       { name: '課題配信', icon: FileText },
@@ -4216,7 +4218,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     ];
     const studentMenuNames = prioritizeMenuItems(
       reconcileMenuOrder(studentMenuOrder, studentMenuBase.map(m => m.name)),
-      ['ホーム', 'みんなの論文', '学会・コンテスト']
+      ['ホーム', 'みんなの論文', '研究テーマを見つける', '学会・コンテスト']
     );
     const studentMenu = studentMenuNames
       .map(name => studentMenuBase.find(m => m.name === name))
@@ -4342,6 +4344,21 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <p className="text-2xl font-extrabold text-emerald-600">{schoolMaterials.length} <span className="text-xs font-medium text-gray-500">件</span></p>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={()=>{setDetailPaper(null);setCurrentTab('研究テーマを見つける');}}
+                    className="w-full overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-950 via-emerald-800 to-teal-700 p-5 text-left text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold tracking-[.18em] text-emerald-200">RESEARCH MATCH</p>
+                        <h3 className="mt-1 text-lg font-extrabold">何を研究するか迷ったら、4つの質問から探す</h3>
+                        <p className="mt-1 text-xs leading-6 text-emerald-50">「みんなの論文」の公開研究をもとに、自分の興味に近い研究テーマを見つけます。</p>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-emerald-800">診断をはじめる <ChevronRight className="h-4 w-4"/></span>
+                    </div>
+                  </button>
 
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                     <h3 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">📢 LTI運営からのお知らせ</h3>
@@ -4586,6 +4603,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   key={JSON.stringify([schoolId, currentStudentId])}
                   storageKey={`lti_academic_references:${JSON.stringify([schoolId, currentStudentId])}`}
                 />
+              ) : currentTab === '研究テーマを見つける' ? (
+                <ResearchThemeFinder papers={papers} onOpen={p=>{setDetailPaper(p);setCurrentTab('みんなの論文');setSidebarCollapsed(true);}} />
               ) : currentTab === 'みんなの論文' ? (
                 detailPaper ? <ResearchDetail key={String(detailPaper.id)} paper={detailPaper} onBack={()=>setDetailPaper(null)} /> : <ResearchLibrary papers={papers} onOpen={p=>{setDetailPaper(p);setSidebarCollapsed(true);}} />
               ) : currentTab === '先生からのフィードバック' ? (
