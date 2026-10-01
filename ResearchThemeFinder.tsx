@@ -29,52 +29,53 @@ type Question={
 
 const questions:Question[]=[
   {
-    title:'どんなものに、つい目がいきますか？',
-    lead:'「勉強として得意」ではなく、なんとなく気になるものを選んでください。',
+    title:'どんな自然現象や技術に一番ワクワクしますか？',
+    lead:'得意科目ではなく、「もっと知りたい」と思うものを選んでください。',
     options:[
-      {label:'生き物・自然',note:'動物、植物、生態、身近な自然',fields:['生物','環境'],keywords:['生物','植物','動物','生態','環境','水','微生物','生命']},
-      {label:'宇宙・地球・気象',note:'地震、岩石、海、天気、宇宙',fields:['地学・宇宙','環境'],keywords:['地学','宇宙','地震','岩石','鉱物','海','気象','地球']},
-      {label:'機械・ものづくり',note:'装置、ロボット、材料、しくみ',fields:['物理','情報・工学'],keywords:['機械','磁','流体','ロボット','装置','材料','工学','構造']},
-      {label:'化学・物質',note:'反応、溶液、色、性質、材料',fields:['化学'],keywords:['化学','反応','物質','pH','溶液','分子','材料']},
-      {label:'人のからだ・健康',note:'感覚、健康、運動、医療',fields:['医療・健康','生物'],keywords:['健康','医療','人体','感覚','味覚','運動','生理']},
-      {label:'社会・人の行動',note:'地域、教育、人の選択や行動',fields:['社会・人文'],keywords:['社会','地域','教育','行動','心理','文化','アンケート']},
-      {label:'数・データ・法則',note:'規則性、予測、グラフ、計算',fields:['数学','情報・工学','物理'],keywords:['数学','データ','解析','予測','規則','数値','モデル']},
+      {label:'生き物・生命',note:'動物、植物、微生物、生態、進化',fields:['生物','医療・健康'],keywords:['生物','植物','動物','微生物','生命','生態','進化','発生','細胞']},
+      {label:'地球・宇宙・気象',note:'地震、岩石、海、天気、宇宙',fields:['地学・宇宙','環境'],keywords:['地学','宇宙','地震','岩石','鉱物','海','気象','地球','火山']},
+      {label:'力・音・光・磁気',note:'動き、波、電気、磁石、流体',fields:['物理'],keywords:['物理','力','振動','音','光','電気','磁','流体','波','運動']},
+      {label:'化学・物質・材料',note:'反応、溶液、色、分子、新素材',fields:['化学','環境'],keywords:['化学','反応','物質','pH','溶液','分子','材料','触媒','結晶']},
+      {label:'機械・電子・ロボット',note:'装置、センサー、制御、ものづくり',fields:['情報・工学','物理'],keywords:['機械','ロボット','装置','センサー','制御','電子','工学','設計','製作']},
+      {label:'数理・データ・情報',note:'数式、プログラム、予測、画像解析',fields:['数学','情報・工学'],keywords:['数学','データ','解析','予測','数値','モデル','プログラム','画像解析','シミュレーション']},
+      {label:'環境・エネルギー',note:'水、気候、資源、再エネ、環境問題',fields:['環境','化学','地学・宇宙'],keywords:['環境','水','気候','エネルギー','資源','汚染','再生可能','炭素','海洋']},
     ],
   },
   {
-    title:'研究するなら、どの進め方が楽しそう？',
-    lead:'「これなら続けられそう」と思うものを選んでください。',
+    title:'どんな研究の進め方をやってみたいですか？',
+    lead:'実際に手を動かす場面を想像して選んでください。',
     options:[
-      {label:'じっくり観察する',note:'変化を記録して違いを見つける',fields:['生物','地学・宇宙','環境'],keywords:['観察','形状','変化','生態','顕微鏡','記録']},
-      {label:'条件を変えて実験する',note:'温度や量などを変えて比べる',fields:['物理','化学','生物'],keywords:['実験','条件','温度','濃度','pH','比較','測定']},
-      {label:'作って、試して、改良する',note:'装置やプログラムを形にする',fields:['情報・工学','物理'],keywords:['装置','開発','改良','設計','ロボット','プログラム','製作']},
-      {label:'データから法則を探す',note:'測定値や公開データを分析する',fields:['数学','情報・工学','地学・宇宙'],keywords:['データ','解析','相関','分布','グラフ','統計','予測']},
-      {label:'人に聞いて確かめる',note:'アンケートや行動観察を使う',fields:['社会・人文','医療・健康'],keywords:['アンケート','調査','行動','意識','比較','人']},
+      {label:'顕微鏡や観察で変化を追う',note:'形や動き、生態をじっくり記録する',fields:['生物','地学・宇宙'],keywords:['観察','顕微鏡','形状','発生','生態','記録','時系列']},
+      {label:'条件を変えて実験する',note:'温度、濃度、磁場などを変えて比較する',fields:['物理','化学','生物'],keywords:['実験','条件','温度','濃度','pH','磁場','比較','測定']},
+      {label:'装置や仕組みを作って試す',note:'工作、電子回路、ロボット、センサー',fields:['情報・工学','物理'],keywords:['装置','開発','改良','設計','ロボット','センサー','製作','回路']},
+      {label:'データを解析して法則を探す',note:'グラフ、統計、画像、公開データを使う',fields:['数学','情報・工学','地学・宇宙'],keywords:['データ','解析','相関','分布','グラフ','統計','画像解析','予測']},
+      {label:'野外で採集・測定する',note:'川、海、山、空、地域の自然を調べる',fields:['環境','地学・宇宙','生物'],keywords:['野外','採集','海','河川','環境','測定','フィールド','試料']},
     ],
   },
   {
-    title:'どんな「問い」にワクワクしますか？',
-    lead:'研究で最後に知りたいことに近いものを選びます。',
+    title:'どんなタイプの「問い」を追いかけたいですか？',
+    lead:'研究のゴールに一番近いものを選んでください。',
     options:[
-      {label:'なぜ、そうなるの？',note:'現象のしくみや原因を知りたい',fields:['物理','化学','生物','地学・宇宙'],keywords:['原因','機構','メカニズム','なぜ','形成','しくみ']},
-      {label:'どんな条件で変わる？',note:'条件と結果の関係を見つけたい',fields:['物理','化学','生物','環境'],keywords:['条件','影響','関係','依存','変化','閾値']},
-      {label:'もっと良くできない？',note:'性能や方法を改善してみたい',fields:['情報・工学','物理','化学'],keywords:['改良','性能','最適','効率','精度','改善']},
-      {label:'社会や未来に役立てたい',note:'課題解決や新しい使い方につなげたい',fields:['環境','医療・健康','社会・人文','情報・工学'],keywords:['課題','応用','活用','環境','社会','健康','持続']},
-      {label:'まだよく分からないものを追いたい',note:'未解明の現象をじっくり掘りたい',fields:['生物','地学・宇宙','物理'],keywords:['未解明','解明','未知','生活環','過程','発生']},
+      {label:'なぜ、この現象が起きる？',note:'原因やメカニズムを解明したい',fields:['物理','化学','生物','地学・宇宙'],keywords:['原因','機構','メカニズム','形成','しくみ','解明']},
+      {label:'どんな条件で変化する？',note:'閾値や条件と結果の関係を探したい',fields:['物理','化学','生物','環境'],keywords:['条件','影響','関係','依存','変化','閾値','濃度','温度']},
+      {label:'どうすれば性能を上げられる？',note:'装置・材料・方法を改善したい',fields:['情報・工学','物理','化学'],keywords:['改良','性能','最適','効率','精度','改善','設計']},
+      {label:'まだ誰も詳しく知らないことを見つけたい',note:'未解明の現象や未知のパターンを追いたい',fields:['生物','地学・宇宙','物理','化学'],keywords:['未解明','未知','発見','生活環','過程','新規','解明']},
+      {label:'科学技術として役立てたい',note:'環境・医療・産業などの応用につなげたい',fields:['環境','医療・健康','情報・工学','化学'],keywords:['応用','活用','環境','医療','産業','技術','実装','材料']},
     ],
   },
   {
-    title:'研究する場所を選べるなら？',
-    lead:'実際に取り組む場面をイメージして選んでください。',
+    title:'使ってみたい道具や場所はどれですか？',
+    lead:'今すぐ使えるかは気にせず、興味があるものを選んでください。',
     options:[
-      {label:'身近な生活の中',note:'家、学校、食べ物、日用品など',fields:['生物','化学','物理','社会・人文'],keywords:['身近','生活','味覚','紙','食品','学校']},
-      {label:'自然やフィールド',note:'川、海、山、地域、屋外観察',fields:['環境','地学・宇宙','生物'],keywords:['野外','海','河川','地域','環境','採集','自然']},
-      {label:'理科室・実験室',note:'測定機器や実験装置を使いたい',fields:['物理','化学','生物'],keywords:['実験','測定','顕微鏡','装置','試料','分析']},
-      {label:'PC・データの中',note:'プログラム、画像、数値を扱いたい',fields:['情報・工学','数学'],keywords:['画像解析','データ','プログラム','シミュレーション','解析','モデル']},
-      {label:'人や地域の中',note:'人の行動や社会の課題を扱いたい',fields:['社会・人文','医療・健康'],keywords:['地域','人','社会','行動','調査','教育']},
+      {label:'顕微鏡・生物試料',note:'細胞、生物、微細な構造を観察したい',fields:['生物','医療・健康'],keywords:['顕微鏡','細胞','試料','観察','生物','微生物']},
+      {label:'センサー・測定器・実験装置',note:'数値を測って現象を確かめたい',fields:['物理','化学','地学・宇宙'],keywords:['測定','センサー','装置','磁束','温度','圧力','電圧','分析']},
+      {label:'工作・電子回路・ロボット',note:'自分で装置を作って改良したい',fields:['情報・工学','物理'],keywords:['工作','回路','ロボット','装置','制御','センサー','製作']},
+      {label:'PC・プログラム・画像解析',note:'コードやデータで研究したい',fields:['情報・工学','数学'],keywords:['プログラム','画像解析','データ','シミュレーション','モデル','解析']},
+      {label:'海・川・山などのフィールド',note:'自然の中で採集や測定をしたい',fields:['環境','地学・宇宙','生物'],keywords:['海','河川','山','野外','採集','環境','フィールド','地質']},
+      {label:'化学実験・材料づくり',note:'試薬や材料を扱って性質を調べたい',fields:['化学','環境'],keywords:['化学','試薬','材料','反応','溶液','合成','結晶','pH']},
     ],
   },
-];
+]
 
 const normalize=(v:string)=>v.normalize('NFKC').toLowerCase();
 
@@ -103,7 +104,8 @@ export function ResearchThemeFinder<T extends FinderPaper>({papers,onOpen}:{pape
   const [answers,setAnswers]=useState<Option[]>([]);
   const [showResults,setShowResults]=useState(false);
 
-  const published=useMemo(()=>papers.filter(p=>p.status==='公開中'),[papers]);
+  const scienceFields=new Set(['物理','化学','生物','地学・宇宙','環境','数学','情報・工学','医療・健康']);
+  const published=useMemo(()=>papers.filter(p=>p.status==='公開中'&&scienceFields.has(p.field)),[papers]);
 
   const fieldScores=useMemo(()=>{
     const map=new Map<string,number>();
@@ -219,8 +221,8 @@ export function ResearchThemeFinder<T extends FinderPaper>({papers,onOpen}:{pape
     <div className="overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm">
       <div className="bg-gradient-to-br from-emerald-950 via-emerald-800 to-teal-700 p-6 md:p-8 text-white">
         <p className="text-xs font-bold tracking-[.18em] text-emerald-200">RESEARCH MATCH</p>
-        <h2 className="mt-2 text-2xl md:text-3xl font-extrabold">自分に合いそうな研究を見つける</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-emerald-50">4つの質問に答えると、「みんなの論文」の公開研究をもとに、興味が近そうな研究テーマを提案します。</p>
+        <h2 className="mt-2 text-2xl md:text-3xl font-extrabold">自分に合いそうな理系研究を見つける</h2>
+        <p className="mt-3 max-w-2xl text-sm leading-7 text-emerald-50">4つの理系質問に答えると、「みんなの論文」の自然科学・工学系研究をもとに、興味が近そうな研究テーマを提案します。</p>
       </div>
       <div className="p-5 md:p-8">
         <div className="flex items-center justify-between text-xs font-bold text-slate-400"><span>QUESTION {step+1} / {questions.length}</span><span>{progress}%</span></div>
@@ -239,13 +241,13 @@ export function ResearchThemeFinder<T extends FinderPaper>({papers,onOpen}:{pape
         </div>
         <div className="mt-6 flex items-center justify-between">
           <button type="button" disabled={step===0} onClick={back} className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 disabled:invisible"><ArrowLeft className="h-4 w-4"/>前の質問</button>
-          <div className="flex items-center gap-2 text-xs text-slate-400"><Search className="h-4 w-4"/>公開中の論文 {published.length}件から探します</div>
+          <div className="flex items-center gap-2 text-xs text-slate-400"><Search className="h-4 w-4"/>理系の公開論文 {published.length}件から探します</div>
         </div>
       </div>
     </div>
 
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      <div className="rounded-2xl border bg-white p-4"><BookOpen className="h-5 w-5 text-emerald-600"/><p className="mt-2 text-sm font-bold">学習元は「みんなの論文」</p><p className="mt-1 text-xs leading-5 text-slate-500">実際に公開されている高校生研究を出発点にします。</p></div>
+      <div className="rounded-2xl border bg-white p-4"><BookOpen className="h-5 w-5 text-emerald-600"/><p className="mt-2 text-sm font-bold">学習元は「みんなの論文」</p><p className="mt-1 text-xs leading-5 text-slate-500">実際に公開されている高校生の理系研究を出発点にします。</p></div>
       <div className="rounded-2xl border bg-white p-4"><FlaskConical className="h-5 w-5 text-blue-600"/><p className="mt-2 text-sm font-bold">興味 × 研究方法で探す</p><p className="mt-1 text-xs leading-5 text-slate-500">分野だけでなく、観察・実験・分析などの好みも使います。</p></div>
       <div className="rounded-2xl border bg-white p-4"><CheckCircle2 className="h-5 w-5 text-violet-600"/><p className="mt-2 text-sm font-bold">元論文までたどれる</p><p className="mt-1 text-xs leading-5 text-slate-500">候補だけで終わらず、根拠になった研究本文を読めます。</p></div>
     </div>
