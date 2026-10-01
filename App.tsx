@@ -3077,7 +3077,6 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const teacherMenuBase = [
       { name: 'ホーム', icon: Home },
       { name: 'みんなの論文', icon: BookOpen },
-      { name: '研究テーマを見つける', icon: Lightbulb },
       { name: '学会・コンテスト', icon: Trophy },
       { name: '教材', icon: FileUp },
       { name: '課題配信', icon: FileText },
@@ -4208,6 +4207,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const studentMenuBase = [
       { name: 'ホーム', icon: Home },
       { name: 'みんなの論文', icon: BookOpen },
+      { name: '研究テーマを見つける', icon: Lightbulb },
       { name: '学会・コンテスト', icon: Trophy },
       { name: '課題・提出物', icon: FileText },
       { name: '教材', icon: FileUp },
