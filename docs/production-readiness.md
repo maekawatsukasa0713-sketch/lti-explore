@@ -1,3 +1,73 @@
+# 記録の再点検（2026-10-02）
+
+この節が今回確認した状態です。下部の2026-09-24〜09-29の記録は、その時点の履歴として保持しています。過去の件数・未完了事項を現在の状態として使わないでください。
+
+## 確認結果
+
+| 項目 | 今回の結果 |
+| --- | --- |
+| 本番ソース | main 562585cbe6ec9a20cf47fb54214cd263e2ecedcc |
+| Vercel | 上記コミットのProductionがREADY |
+| 本番Edge Functions | lti-accounts v9 / research-ai v30 / paper-search v6、すべてACTIVE |
+| 本番プロジェクト | ACTIVE_HEALTHY |
+| 論文 | 本番・試験とも535件、公開中534件 |
+| 保存済みAI解析 | 両環境とも535件、状態ready、ID順のAI結果の照合値が一致 |
+| 論文の添付参照 | lti-documentsに存在しない参照先は両環境とも0件 |
+| 本番Storage | 非公開lti-documents、539件、446,601,138バイト |
+| 試験Storage | 非公開lti-documentsとlti-production-backup、それぞれ538件、441,821,815バイト |
+| 既存バックアップ | 538件すべて本番とファイル名・サイズ・ETagが一致 |
+| バックアップ不足 | 新しい課題添付1件、4,779,323バイトがバックアップ側に未収録 |
+| 孤立した学校参照 | 論文等レコード・プロフィールとも0件 |
+| RLS | publicのlti_実テーブルで無効なもの0件 |
+| 運営MFA | 有効な運営2名とも登録済み。生徒・教員の登録済みMFA要素は0件 |
+| プロフィール更新権限 | authenticatedのUPDATE対象はname / class / dept / themeのみ |
+| AI利用枠払い戻し | 旧RPC・内部RPCともanon/authenticatedの実行権限なし。内部RPCはservice_roleのみ実行可 |
+
+ETag・サイズの一致はStorageメタデータの照合です。全ファイル本体をダウンロードして独立したチェックサムを計算した検証や、実際の復元演習の完了とはみなしていません。未参照オブジェクト2件は削除していません。
+
+## 学校ID発行の修正とリリース記録
+
+- 原因は新しい本番URL https://explore.labtoimpact.com が3つのAPIの許可Originから漏れていたこと。
+- 変更前は学校・アカウント管理APIのOPTIONSが403。GitHub最新mainと配備済みの3関数を照合し、改行以外の差がないことを確認した。
+- 562585cのアプリ側変更は3か所の許可Origin追加とtests/edge-cors.test.mjs追加。認証とDBの処理はその差分の対象ではない。
+- ローカルのCORS・アカウント再発行テストが成功。本番の3APIでも本番OriginのOPTIONS=200、匿名POST=401、未許可Origin=403を確認した。
+- 修正後の2026-10-02 06:00〜14:28 UTCの取得ログには、lti-accountsのPOST成功8件、OPTIONS成功10件。401と403各1件は検証時刻の拒否試験と一致。POSTの成功は学校作成だけの件数ではない。
+- この修正はmainへ直接反映した。デプロイ前後の運用md再読とPreviewでの操作確認は実施しなかった。手順の不足として記録し、今回の再点検で補足した。
+
+## 古い説明との食い違い
+
+- RELEASE_STATUS.md / README.md / RESEARCH_AI_SETUP.mdの「AI未配備」「結果はDBに保存しない」「サービス秘密鍵を使わない」等は過去の記録。現在の登録解析は保存済み結果を再利用し、結果を論文レコードに保存する。サービス秘密鍵はサーバーで利用枠払い戻しに使う。
+- RELEASE_SCHOOL_FEATURES.mdの「公開承認時のみAI生成」は現在の一括登録・解析・編集・公開の手順と異なる。登録後に解析・保存し、公開を別操作で行う。運営が既存解析を編集しても生成APIを呼び直さない。
+- docs/DATA_SAFETY.mdの「Storageを毎日03:30 JSTに自動バックアップ」は現行workflowと不一致。現行はworkflow_dispatchによる手動実行のみ。Secret名も実装に合わせて訂正した。
+- 本番とstagingのコード差分は、今回のCORS追加3か所と検証テスト。試験DBを本番に書き戻す操作は実施していない。
+
+## 現在残る確認・対応
+
+1. 課題添付1件を次回Storageバックアップに収録する。手動実行設定のため、定期バックアップ実施を保証しない。
+2. Auth Site URL、許可Redirect URLs、SMTP・送信上限、漏洩パスワード保護の現在値は未取得。復旧メールからMFA・パスワード変更までの実機確認は未実施。現行フロントの復旧先は https://lti-explore-six.vercel.app/?flow=recovery 。
+3. 全ファイル本体の復元・PDF閲覧と、実セッションによる学校間アクセス制限の復元演習は未実施。
+4. 監視の通知先・担当者、秘密鍵の期限・ローテーション、運営MFAの復旧手順は未確認。
+5. GitHub Actionsの最新実行履歴は、取得時にGitHub APIのレート制限で確認できなかった。workflowに記述があることと、バックアップやCIが実行成功したことを混同しない。
+
+## スキーマ記録（2026-10-03日本時間追記）
+
+本番のlti_実テーブル9個の列・PK・FKを読み取り、[ER図](ER_DIAGRAM.md) と [スキーマの取得記録](database-schema.json) を作成した。図は実FKに基づき、JSON内の参照やFKでない関連は対応表で区別している。DB構造の変更は行っていない。
+
+今回の文書PRのCIで、既存UIテストが旧文言「詳細・申込ページ」を要求して失敗した。アプリには現在「公式・申込ページ」と安全な外部リンクが実装されているため、そのリンクを確認するテストへ更新した。アプリの表示や処理は変更していない。
+
+## Security Advisor
+
+再取得ではSECURITY DEFINERのWARNが13件、RLS有効・直接ポリシーなしのINFOが5件。WARN対象の13関数を読み、本人・所属学校・機能制限・運営MFAの共通判定または利用枠権限判定を確認した。WARNの存在だけで公開権限を広げない。
+
+- [SECURITY DEFINERの説明](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable)
+- [RLS有効・ポリシーなしの説明](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)
+
+今回の再点検はDB・Storage・ログの読み取りと文書整理。本番データの削除・再解析・アカウント変更・復元は実施していない。保存データとコード配備の点検は完了したが、上記の未確認事項を含む全運用試験が完了したという判定ではない。
+
+---
+
+# 以下は過去の点検履歴
+
 # 本番運用前の確認（2026-09-24）
 
 ## 今回反映した修正

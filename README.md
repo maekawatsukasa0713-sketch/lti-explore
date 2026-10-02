@@ -1,3 +1,28 @@
+# LTI Explore — 現在の入口（2026-10-02）
+
+本番アプリは https://explore.labtoimpact.com/ 、React / TypeScript / ViteとSupabaseを使用しています。GitHub main / Vercel Productionが本番、staging / Previewが試験環境です。
+
+現在の運用説明は以下を参照してください。
+
+- [リリース状況](RELEASE_STATUS.md)
+- [データ保護・リリース手順](docs/DATA_SAFETY.md)
+- [本番の点検結果と未確認事項](docs/production-readiness.md)
+- [AIの現在の構成](RESEARCH_AI_SETUP.md)
+- [本番DBのER図](docs/ER_DIAGRAM.md)
+
+## 開発
+
+Node.js 20.19以降で npm ci、npm run dev を実行します。ビルドは npm run build。
+Vercel Previewとlocalhostは、明示的な環境変数の上書きがない場合、試験Supabaseを使用します。秘密鍵をViteの公開環境変数に入れないでください。
+
+## 記録の扱い
+
+以下は過去の作業履歴です。「未配備」「未接続」「10MB」「Netlifyへの手動更新」等は当時の状態で、現在の運用指示ではありません。既存の本番に過去のschema.sqlを再適用する指示として使わないでください。現在の確認結果を上の文書で読み、履歴の条件と日付を区別してください。
+
+---
+
+# 以下は過去の作業履歴
+
 # 起動時の白画面修正
 
 管理者プロフィール取得後、利用者一覧の取得前にConnectedAppを描画すると、currentAdminUserがundefinedになりname参照でクラッシュする不具合を再現・修正。
