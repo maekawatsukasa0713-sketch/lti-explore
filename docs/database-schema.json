@@ -1,0 +1,484 @@
+{
+  "capturedDate": "2026-10-03",
+  "capturedTimeZone": "Asia/Tokyo",
+  "source": "production Supabase / public lti_ base tables",
+  "tables": [
+    {
+      "table": "lti_ai_usage",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": "NO"
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "mode",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": "NO"
+        }
+      ]
+    },
+    {
+      "table": "lti_paper_bookmarks",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "paper_id",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": "NO"
+        }
+      ]
+    },
+    {
+      "table": "lti_paper_citations",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "paper_id",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": "NO"
+        }
+      ]
+    },
+    {
+      "table": "lti_paper_views",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "paper_id",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "viewed_on",
+          "type": "date",
+          "nullable": "NO"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": "NO"
+        }
+      ]
+    },
+    {
+      "table": "lti_profiles",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "school_id",
+          "type": "text",
+          "nullable": "YES"
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": "NO"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "class",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "dept",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "theme",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "login_id",
+          "type": "text",
+          "nullable": "YES"
+        },
+        {
+          "name": "must_change_password",
+          "type": "boolean",
+          "nullable": "NO"
+        },
+        {
+          "name": "initial_password_expires_at",
+          "type": "timestamp with time zone",
+          "nullable": "YES"
+        },
+        {
+          "name": "session_valid_after",
+          "type": "timestamp with time zone",
+          "nullable": "NO"
+        },
+        {
+          "name": "attendance_number",
+          "type": "integer",
+          "nullable": "YES"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "nullable": "YES"
+        }
+      ]
+    },
+    {
+      "table": "lti_provision_batches",
+      "columns": [
+        {
+          "name": "request_id",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "school_id",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "requested_by",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "first_number",
+          "type": "integer",
+          "nullable": "NO"
+        },
+        {
+          "name": "count",
+          "type": "integer",
+          "nullable": "NO"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": "NO"
+        }
+      ]
+    },
+    {
+      "table": "lti_records",
+      "columns": [
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "data",
+          "type": "jsonb",
+          "nullable": "NO"
+        },
+        {
+          "name": "school_id",
+          "type": "text",
+          "nullable": "YES"
+        },
+        {
+          "name": "student_id",
+          "type": "text",
+          "nullable": "YES"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": "YES"
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": "NO"
+        }
+      ]
+    },
+    {
+      "table": "lti_schools",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "next_student_number",
+          "type": "integer",
+          "nullable": "NO"
+        },
+        {
+          "name": "next_teacher_number",
+          "type": "integer",
+          "nullable": "NO"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "nullable": "YES"
+        },
+        {
+          "name": "feature_settings",
+          "type": "jsonb",
+          "nullable": "NO"
+        }
+      ]
+    },
+    {
+      "table": "lti_support_messages",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "sender_id",
+          "type": "uuid",
+          "nullable": "NO"
+        },
+        {
+          "name": "school_id",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "school_name",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "sender_name",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "sender_role",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "reply",
+          "type": "text",
+          "nullable": "NO"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": "NO"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": "NO"
+        }
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "name": "lti_ai_usage_pkey",
+      "type": "p",
+      "table": "lti_ai_usage",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "lti_ai_usage_user_id_fkey",
+      "type": "f",
+      "table": "lti_ai_usage",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "lti_paper_bookmarks_pkey",
+      "type": "p",
+      "table": "lti_paper_bookmarks",
+      "definition": "PRIMARY KEY (user_id, paper_id)"
+    },
+    {
+      "name": "lti_paper_bookmarks_user_id_fkey",
+      "type": "f",
+      "table": "lti_paper_bookmarks",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "lti_paper_citations_pkey",
+      "type": "p",
+      "table": "lti_paper_citations",
+      "definition": "PRIMARY KEY (user_id, paper_id)"
+    },
+    {
+      "name": "lti_paper_citations_user_id_fkey",
+      "type": "f",
+      "table": "lti_paper_citations",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "lti_paper_views_pkey",
+      "type": "p",
+      "table": "lti_paper_views",
+      "definition": "PRIMARY KEY (user_id, paper_id, viewed_on)"
+    },
+    {
+      "name": "lti_paper_views_user_id_fkey",
+      "type": "f",
+      "table": "lti_paper_views",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "lti_profiles_id_fkey",
+      "type": "f",
+      "table": "lti_profiles",
+      "definition": "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "lti_profiles_pkey",
+      "type": "p",
+      "table": "lti_profiles",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "lti_profiles_school_id_fkey",
+      "type": "f",
+      "table": "lti_profiles",
+      "definition": "FOREIGN KEY (school_id) REFERENCES lti_schools(id)"
+    },
+    {
+      "name": "lti_provision_batches_pkey",
+      "type": "p",
+      "table": "lti_provision_batches",
+      "definition": "PRIMARY KEY (request_id)"
+    },
+    {
+      "name": "lti_provision_batches_requested_by_fkey",
+      "type": "f",
+      "table": "lti_provision_batches",
+      "definition": "FOREIGN KEY (requested_by) REFERENCES auth.users(id)"
+    },
+    {
+      "name": "lti_provision_batches_school_id_fkey",
+      "type": "f",
+      "table": "lti_provision_batches",
+      "definition": "FOREIGN KEY (school_id) REFERENCES lti_schools(id)"
+    },
+    {
+      "name": "lti_records_owner_id_fkey",
+      "type": "f",
+      "table": "lti_records",
+      "definition": "FOREIGN KEY (owner_id) REFERENCES auth.users(id)"
+    },
+    {
+      "name": "lti_records_pkey",
+      "type": "p",
+      "table": "lti_records",
+      "definition": "PRIMARY KEY (kind, id)"
+    },
+    {
+      "name": "lti_records_school_id_fkey",
+      "type": "f",
+      "table": "lti_records",
+      "definition": "FOREIGN KEY (school_id) REFERENCES lti_schools(id)"
+    },
+    {
+      "name": "lti_schools_pkey",
+      "type": "p",
+      "table": "lti_schools",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "lti_support_messages_pkey",
+      "type": "p",
+      "table": "lti_support_messages",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "lti_support_messages_sender_id_fkey",
+      "type": "f",
+      "table": "lti_support_messages",
+      "definition": "FOREIGN KEY (sender_id) REFERENCES lti_profiles(id)"
+    }
+  ]
+}
