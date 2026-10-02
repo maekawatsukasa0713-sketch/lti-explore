@@ -122,7 +122,7 @@ const cloudSourceForEnv=readFileSync(new URL('../cloud.tsx',import.meta.url),'ut
  assert.match(appSource,/生徒・教員に配信している内容を運営側でも確認できます/);
  assert.match(appSource,/お知らせ管理を開く/);
  assert.match(appSource,/公式・申込URL/);
- assert.match(appSource,/詳細・申込ページ/);
+ assert.match(appSource,/<a href=\{href\} target="_blank" rel="noreferrer"[^>]*>公式・申込ページ/);
  assert.match(appSource,/url\?: string/);
  assert.match(appSource,/const formatDisplayDateTime/);
  assert.match(appSource,/timeZone: 'Asia\/Tokyo'/);
