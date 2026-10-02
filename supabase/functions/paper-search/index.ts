@@ -4,7 +4,7 @@ const cors={'Access-Control-Allow-Origin':'https://lti-explore.vercel.app','Acce
 const cache=new Map<string,{time:number;data:Awaited<ReturnType<typeof runSearch>>}>();
 Deno.serve(async(req:Request)=>{
  const origin=req.headers.get('Origin')||'';
- const allowedOrigins=['https://lti-explore-six.vercel.app','https://lti-explore-lab-to-impact.vercel.app','https://lti-explore.vercel.app'];
+ const allowedOrigins=['https://lti-explore-six.vercel.app','https://lti-explore-lab-to-impact.vercel.app','https://lti-explore.vercel.app','https://explore.labtoimpact.com'];
  const requestCors={...cors,'Access-Control-Allow-Origin':allowedOrigins.includes(origin)?origin:allowedOrigins[0]};
  const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...requestCors,'Content-Type':'application/json','Cache-Control':'no-store'}});
  if(origin&&!allowedOrigins.includes(origin))return reply({error:'このURLからは利用できません。'},403);

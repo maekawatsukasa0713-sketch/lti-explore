@@ -5,7 +5,7 @@ const headers={'Access-Control-Allow-Origin':'https://lti-explore-lab-to-impact.
 
 const password=()=>{const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';let value='';while(value.length<10){const bytes=crypto.getRandomValues(new Uint8Array(20));for(const b of bytes){if(b<256-256%alphabet.length)value+=alphabet[b%alphabet.length];if(value.length===10)break;}}return value;};
 async function loginEmail(school:string,id:string){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`${school.toLowerCase()}\0${id.toLowerCase()}`));return Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('')+'@accounts.lti.invalid';}
-const allowedOrigins=new Set(['https://lti-explore-lab-to-impact.vercel.app','https://lti-explore-six.vercel.app','https://lti-explore.vercel.app']);
+const allowedOrigins=new Set(['https://explore.labtoimpact.com','https://lti-explore-lab-to-impact.vercel.app','https://lti-explore-six.vercel.app','https://lti-explore.vercel.app']);
 Deno.serve(async req=>{
  const origin=req.headers.get('Origin')||'';
  const requestHeaders={...headers,'Access-Control-Allow-Origin':allowedOrigins.has(origin)?origin:'https://lti-explore-lab-to-impact.vercel.app'};

@@ -60,7 +60,7 @@ export function normalizeRegistrationResult(v:any){
 }
 Deno.serve(async(req:Request)=>{
  const origin=req.headers.get('origin')||'';
- const allowedOrigins=['https://lti-explore.vercel.app','https://lti-explore-lab-to-impact.vercel.app','https://lti-explore-six.vercel.app','https://maekawatsukasa0713-sketch.github.io'];
+ const allowedOrigins=['https://lti-explore.vercel.app','https://lti-explore-lab-to-impact.vercel.app','https://lti-explore-six.vercel.app','https://maekawatsukasa0713-sketch.github.io','https://explore.labtoimpact.com'];
  const requestHeaders={...headers,'Access-Control-Allow-Origin':allowedOrigins.includes(origin)?origin:allowedOrigins[1]};
  const reply=(data:unknown,status=200)=>new Response(JSON.stringify(data),{headers:requestHeaders,status});
  if(origin&&!allowedOrigins.includes(origin))return reply({error:'このURLからは利用できません。'},403);
