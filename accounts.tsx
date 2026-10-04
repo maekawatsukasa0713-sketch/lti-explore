@@ -8,7 +8,12 @@ export async function schoolLoginEmail(school:string,login:string){const hash=aw
 async function accountAction(body:Record<string,unknown>){
  const {data,error}=await supabase.functions.invoke('lti-accounts',{body});
  if(error){let message='通信できませんでした。接続を確認して再度お試しください。';try{const result=await error.context?.json();message=result?.error||message;}catch{}throw new Error(message);}
- if(data?.error)throw new Error(data.error);return data;
+ if(data?.error)throw new Error(data.error);
+ if((body.action==='create-accounts'||body.action==='reset-password')&&Array.isArray(data?.credentials)){
+  const expiresAt=new Date(Date.now()+180*86400000).toISOString();
+  data.credentials=data.credentials.map((c:any)=>({...c,expiresAt}));
+ }
+ return data;
 }
 export function PasswordChange({onDone,onCancel,initialSetup=false}:{onDone:()=>void;onCancel?:()=>void;initialSetup?:boolean}){
  const [current,setCurrent]=useState('');const [next,setNext]=useState('');const [again,setAgain]=useState('');const [error,setError]=useState('');const [busy,setBusy]=useState(false);
