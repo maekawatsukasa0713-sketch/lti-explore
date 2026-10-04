@@ -3,6 +3,8 @@ const url=Deno.env.get('SUPABASE_URL')!;
 const service=createClient(url,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false}});
 const headers={'Access-Control-Allow-Origin':'https://lti-explore-lab-to-impact.vercel.app','Vary':'Origin','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info','Access-Control-Allow-Methods':'POST, OPTIONS','Cache-Control':'no-store','Content-Type':'application/json'};
 
+const INITIAL_PASSWORD_TTL_MS=180*86400000; // 約6カ月
+const initialPasswordExpiry=()=>new Date(Date.now()+INITIAL_PASSWORD_TTL_MS).toISOString();
 const password=()=>{const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';let value='';while(value.length<10){const bytes=crypto.getRandomValues(new Uint8Array(20));for(const b of bytes){if(b<256-256%alphabet.length)value+=alphabet[b%alphabet.length];if(value.length===10)break;}}return value;};
 async function loginEmail(school:string,id:string){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`${school.toLowerCase()}\0${id.toLowerCase()}`));return Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('')+'@accounts.lti.invalid';}
 const allowedOrigins=new Set(['https://explore.labtoimpact.com','https://lti-explore-lab-to-impact.vercel.app','https://lti-explore-six.vercel.app','https://lti-explore.vercel.app']);
@@ -76,7 +78,7 @@ Deno.serve(async req=>{
     const email=await loginEmail(school,loginId);
     const created=await service.auth.admin.createUser({email,password:initialPassword,email_confirm:true});
     if(created.error||!created.data.user){failures.push({loginId,error:'Authアカウント作成に失敗'});continue;}
-    const expiresAt=new Date(Date.now()+7*86400000).toISOString();
+    const expiresAt=initialPasswordExpiry();
     const saved=await service.from('lti_profiles').update({school_id:school,login_id:loginId,role:accountRole,active:true,name:accountRole==='student'?`生徒 ${loginId}`:`教員 ${loginId}`,must_change_password:true,initial_password_expires_at:expiresAt,session_valid_after:new Date().toISOString()}).eq('id',created.data.user.id);
     if(saved.error){const cleanup=await service.auth.admin.deleteUser(created.data.user.id);failures.push({loginId,error:cleanup.error?'初期設定失敗。未承認アカウントが残っています。運営で確認してください':'初期設定に失敗（未使用アカウントを削除済み）'});continue;}
     credentials.push({schoolId:school,loginId,initialPassword,expiresAt});
@@ -88,7 +90,7 @@ Deno.serve(async req=>{
    if(target.error||!target.data?.login_id||target.data.role==='admin')return respond({error:'学校用の生徒・教員アカウントを選択してください'},400);
    if(!target.data.active||target.data.deleted_at)return respond({error:'利用停止中のアカウントです。利用状態を確認してください。'},400);
    if(target.data.id===user.id)return respond({error:'自分のパスワードは本人用の変更画面を使用してください'},400);
-   const initialPassword=password();const expiresAt=new Date(Date.now()+7*86400000).toISOString();
+   const initialPassword=password();const expiresAt=initialPasswordExpiry();
    const block=await service.from('lti_profiles').update({must_change_password:true,initial_password_expires_at:expiresAt,session_valid_after:new Date().toISOString()}).eq('id',target.data.id);if(block.error)throw block.error;
    const changed=await service.auth.admin.updateUserById(target.data.id,{password:initialPassword});if(changed.error)throw changed.error;
    return respond({credentials:[{schoolId:target.data.school_id,loginId:target.data.login_id,initialPassword,expiresAt}]});
