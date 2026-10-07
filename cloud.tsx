@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import {Building2,ShieldCheck,ChevronRight,ChevronLeft,ArrowLeft,User,Lock,Download,Maximize2,X,Minus,Plus,FileText} from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import {supabase,recoveryOnArrival} from './client';
-import {APP_URL,APP_ENV} from './supabase-config';
+import {APP_URL,APP_ENV,PASSWORD_RECOVERY_URL} from './supabase-config';
 import {schoolLoginEmail,PasswordChange,MfaSetup,AccountManagement} from './accounts';
 export {supabase} from './client';
 export type Profile = { deleted_at?:string|null; attendance_number?:number|null; login_id?:string|null; must_change_password?:boolean; initial_password_expires_at?:string|null; session_valid_after?:string; id:string; school_id:string|null; role:'admin'|'teacher'|'student'; active:boolean; name:string; class:string; dept:string; theme:string };
@@ -175,7 +175,7 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
   finally{lock.current=false;setBusy(false);}
  };
  const auth=async(e:React.FormEvent)=>{e.preventDefault();setAuthError('');setMessage('');setBusy(true);try{
-  if(mode==='reset'){const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:'https://lti-explore-six.vercel.app/?flow=recovery'});if(error)throw error;setMessage('登録済みの場合、再設定メールが届きます。');}
+  if(mode==='reset'){const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:PASSWORD_RECOVERY_URL});if(error)throw error;setMessage('登録済みの場合、再設定メールが届きます。');}
   else {const authEmail=loginType==='school'?await schoolLoginEmail(loginSchool,loginId):email;const {error}=await supabase.auth.signInWithPassword({email:authEmail,password});if(error)throw error;if(loginType==='school'){try{localStorage.setItem('lti-login-school',loginSchool.trim().toLowerCase());}catch{}}}
   setPassword('');
  }catch(e){setAuthError((e as any)?.message||'認証に失敗しました');}finally{setBusy(false);}};

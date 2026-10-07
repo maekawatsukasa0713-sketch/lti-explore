@@ -128,7 +128,7 @@ create or replace function public.lti_can_delete_document(object_name text)
 returns boolean language sql stable security definer set search_path='' as $$
  select coalesce(public.lti_role() is not null
  and split_part(object_name,'/',1)=auth.uid()::text
- and not exists(select 1 from public.lti_records r where r.data->>'storagePath'=object_name),false)
+ and not exists(select 1 from public.lti_records r where r.data->>'storagePath'=object_name or r.data->>'attachmentPath'=object_name or r.data->>'brochurePath'=object_name),false)
 $$;
 revoke all on function public.lti_can_delete_document(text) from public,anon;
 grant execute on function public.lti_can_delete_document(text) to authenticated,service_role;

@@ -74,7 +74,7 @@ try{
  assert.match(detailSource,/大きく表示/);
  assert.match(detailSource,/AI Research Insight フルスクリーン表示/);
  assert.match(detailSource,/LTI AI RESEARCH INSIGHT/);
- assert.match(detailSource,/z-\[999\]/);
+ assert.match(detailSource,/z-\[9999\]/);
  assert.match(detailSource,/max-w-5xl/);
  assert.match(detailSource,/text-\[15px\] leading-7/);
  assert.match(detailSource,/document\.body\.style\.overflow='hidden'/);
@@ -171,7 +171,7 @@ const cloudSourceForEnv=readFileSync(new URL('../cloud.tsx',import.meta.url),'ut
  assert.doesNotMatch(researchAiSource,/原本は50MB以下|file\.size>50\*1024\*1024/);
 
  const cloudSource=readFileSync(new URL('../cloud.tsx',import.meta.url),'utf8');
- assert.match(cloudSource,/https:\/\/lti-explore-six\.vercel\.app\/\?flow=recovery/);
+ assert.match(cloudSource,/redirectTo:PASSWORD_RECOVERY_URL/);
  assert.match(cloudSource,/function PdfPageCanvas/);
  assert.match(cloudSource,/function PdfFullscreenViewer/);
  assert.match(cloudSource,/LTI RESEARCH VIEWER/);
