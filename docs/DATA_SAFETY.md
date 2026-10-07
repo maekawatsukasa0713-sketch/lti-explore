@@ -11,7 +11,7 @@
 ## ファイル保存
 
 論文、課題提出ファイル、課題配信の添付資料は Vercel 内ではなく Supabase Storage の `lti-documents` に保存します。
-DB の各レコードには実ファイルの `storagePath` / `attachmentPath` を保存するため、通常の Vercel デプロイやアプリ更新ではファイルは削除されません。
+DB の各レコードには実ファイルの `storagePath` / `attachmentPath` / `brochurePath` を保存するため、通常の Vercel デプロイやアプリ更新ではファイルは削除されません。
 
 ## バックアップ
 
@@ -30,7 +30,7 @@ StorageはGitHub Actions `.github/workflows/storage-backup.yml` を手動実行�
 - `TEST_S3_SECRET_ACCESS_KEY`
 
 Secret 値はコードやチャットに貼らず GitHub Secrets のみに登録します。
-未設定の場合、手動ワークフローは警告を出し、コピーをスキップします。workflowの成功表示だけでバックアップ済みと判断せず、コピー工程・集計・不足件数を確認してください。
+未設定の場合、手動ワークフローは失敗終了します。元・既存バックアップ・コピー後の実ファイルをSHA-256で照合し、同サイズでも内容が異なればコピーします。認証・通信・照合の失敗もジョブを失敗させます。集計のfailedが0であることと不足件数を確認してください。全本体の読取はダウンロード通信を伴います。
 
 ### 2026-10-02の読み取り点検
 
@@ -45,3 +45,9 @@ Secret 値はコードやチャットに貼らず GitHub Secrets のみに登録
 4. CI が成功したら main にマージする。
 5. main の production deployment が READY になったことを確認する。
 6. Storage や DB の破壊的変更を伴う場合は、直前のバックアップ成功を確認してから実施する。
+
+## 2026-10-07の修正・再点検
+
+添付権限の本番修正後も論文535件・保存済みAI解析535件と全レコードの内容が前回と一致しました。バックアップ不足の課題添付1件は残り、新しいworkflowの実行と復元演習は未実施です。[詳細な点検記録](audit-2026-10-07.md)を参照してください。
+
+本番の再設定メールの移動先は `https://explore.labtoimpact.com/?flow=recovery` にします。旧Vercel URLの配備保護によるログイン画面への移動を避け、試験環境では試験URLに留めます。Auth側のSite URL・Redirect URLsと実際のメール復旧は別途確認が必要です。

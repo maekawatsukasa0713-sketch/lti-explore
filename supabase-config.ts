@@ -32,3 +32,8 @@ export const APP_URL =
   typeof window !== 'undefined'
     ? `${window.location.origin}/`
     : 'https://lti-explore-six.vercel.app/';
+
+// Public production domain; recovery in Preview stays in that environment.
+export const PASSWORD_RECOVERY_URL = IS_PRODUCTION
+  ? 'https://explore.labtoimpact.com/?flow=recovery'
+  : new URL('?flow=recovery', APP_URL).toString();

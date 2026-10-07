@@ -127,7 +127,7 @@ request_idで同じ発行依頼の二重処理を防ぎ、学校単位の番号�
 
 | 保存値 | 対応先・用途 | 保護の方法 |
 | --- | --- | --- |
-| lti_records.data.storagePath | Storageのlti-documents内のオブジェクト名 | Storageポリシーと認証付き取得。DBのFKではない |
+| lti_records.data.storagePath / attachmentPath / brochurePath | Storageのlti-documents内のオブジェクト名 | 本人の実在ファイルへの新規参照を検証。関連レコードのRLSで閲覧を制限し、参照中の削除を禁止。DBのFKではない |
 | lti_records.student_id | 提出・フィードバック対象の利用者ID | text列。読取・保存RPCで学校・本人を判定。FKではない |
 | lti_paper_*のpaper_id | lti_records(kind='papers',id) | RPCで論文の存在・参照権限を判定。FKではない |
 | lti_support_messages.school_id | 送信時の所属学校 | 送信トリガーがプロフィールから設定。FKではない |
@@ -142,3 +142,5 @@ ER図は構造を表し、アクセス権限そのものは表さない。RLS、
 
 - [現在のリリース状況](../RELEASE_STATUS.md)
 - [本番点検記録](production-readiness.md)
+
+添付保護の修正は関数・トリガー・Storageポリシーに限り、9テーブルと既存FKの構造は変更していません。[2026-10-07の点検記録](audit-2026-10-07.md)。
