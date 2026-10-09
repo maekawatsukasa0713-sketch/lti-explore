@@ -2,7 +2,25 @@
 import hashlib
 import json
 import os
+import re
 import tempfile
+
+def failure_details(exc, operation, key):
+    """Log diagnostic codes only: exception messages may contain credentials."""
+    response = getattr(exc, 'response', {})
+    if not isinstance(response, dict):
+        response = {}
+    error = response.get('Error', {})
+    metadata = response.get('ResponseMetadata', {})
+    code = error.get('Code') if isinstance(error, dict) else None
+    status = metadata.get('HTTPStatusCode') if isinstance(metadata, dict) else None
+    return {
+        'operation': operation,
+        'object_sha256': hashlib.sha256(key.encode('utf-8')).hexdigest(),
+        'exception': type(exc).__name__,
+        'code': code if isinstance(code, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,80}', code) else None,
+        'http_status': status if type(status) is int and 100 <= status <= 599 else None,
+    }
 
 def digest_object(obj, target=None):
     digest = hashlib.sha256()
@@ -25,6 +43,7 @@ def backup(source, dest, source_bucket, backup_bucket):
     for page in source.get_paginator('list_objects_v2').paginate(Bucket=source_bucket):
         for item in page.get('Contents', []):
             key = item['Key']
+            operation = 'download_source'
             try:
                 with tempfile.TemporaryFile() as tmp:
                     obj = source.get_object(Bucket=source_bucket, Key=key)
@@ -32,6 +51,7 @@ def backup(source, dest, source_bucket, backup_bucket):
                     if size != int(item['Size']) or obj.get('ETag') != item.get('ETag'):
                         raise RuntimeError('source changed during backup; retry')
                     try:
+                        operation = 'read_backup'
                         existing = digest_object(dest.get_object(Bucket=backup_bucket, Key=key))
                     except Exception as exc:
                         code = getattr(exc, 'response', {}).get('Error', {}).get('Code')
@@ -46,17 +66,21 @@ def backup(source, dest, source_bucket, backup_bucket):
                             if obj.get(name):
                                 extra[name] = obj[name]
                         tmp.seek(0)
+                        operation = 'upload_backup'
                         dest.upload_fileobj(tmp, backup_bucket, key, ExtraArgs=extra)
+                        operation = 'verify_uploaded_backup'
                         if digest_object(dest.get_object(Bucket=backup_bucket, Key=key)) != (size, sha256):
                             raise RuntimeError('backup byte verification failed')
                         result['copied'] += 1
+                    operation = 'verify_source_unchanged'
                     latest = source.head_object(Bucket=source_bucket, Key=key)
                     if latest.get('ETag') != obj.get('ETag') or int(latest['ContentLength']) != size:
                         raise RuntimeError('source changed during backup; retry')
                     result['verified_bytes'] += size
             except Exception as exc:
                 result['failed'] += 1
-                print(f'::error::Storage object verification failed ({type(exc).__name__})')
+                details = failure_details(exc, operation, key)
+                print('::error::Storage object verification failed ' + json.dumps(details, sort_keys=True), flush=True)
     print(json.dumps(result, sort_keys=True))
     return result
 
