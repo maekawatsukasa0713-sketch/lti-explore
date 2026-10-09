@@ -54,9 +54,20 @@ def backup(source, dest, source_bucket, backup_bucket):
                         operation = 'read_backup'
                         existing = digest_object(dest.get_object(Bucket=backup_bucket, Key=key))
                     except Exception as exc:
-                        code = getattr(exc, 'response', {}).get('Error', {}).get('Code')
-                        if code not in ('404', 'NoSuchKey', 'NotFound'):
+                        response = getattr(exc, 'response', {})
+                        error = response.get('Error', {}) if isinstance(response, dict) else {}
+                        metadata = response.get('ResponseMetadata', {}) if isinstance(response, dict) else {}
+                        code = error.get('Code') if isinstance(error, dict) else None
+                        status = metadata.get('HTTPStatusCode') if isinstance(metadata, dict) else None
+                        missing = (
+                            code in ('404', 'NoSuchKey', 'NotFound') and status in (None, 404)
+                        ) or (code in (None, '') and status == 404)
+                        if not missing:
                             raise
+                        # Some S3-compatible endpoints return an empty error code.
+                        # A 404 can also mean the bucket is missing: verify it first.
+                        operation = 'verify_backup_bucket'
+                        dest.head_bucket(Bucket=backup_bucket)
                         existing = None
                     if existing == (size, sha256):
                         result['verified_existing'] += 1
