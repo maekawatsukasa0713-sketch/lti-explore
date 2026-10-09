@@ -14,6 +14,7 @@ class RemoteFailure(Exception):
 class Memory:
     def __init__(self,items):self.items=items.copy();self.uploads=0;self.corrupt=False;self.denied=False;self.changed=False
     def get_paginator(self,_):return self
+    def head_bucket(self,**_):return {}
     def paginate(self,**_):return [{'Contents':[{'Key':k,'Size':len(v),'ETag':hashlib.md5(v).hexdigest()} for k,v in self.items.items()]}]
     def get_object(self,Key,**_):
         if self.denied:raise PermissionError('denied')
@@ -28,6 +29,49 @@ class Memory:
 def run(source,dest):
     with contextlib.redirect_stdout(io.StringIO()):return module.backup(source,dest,'source','backup')
 class BackupTests(unittest.TestCase):
+    def test_code_less_404_copies_and_verifies_new_object(self):
+        for error in ({}, {'Code':None}, {'Code':''}, {'Code':'404'}):
+            with self.subTest(error=error):
+                class NewObject(Memory):
+                    def __init__(self):super().__init__({});self.bucket_checks=0
+                    def get_object(self,Key,**kwargs):
+                        if Key not in self.items:
+                            exc=Exception('private remote error')
+                            exc.response={'Error':error,'ResponseMetadata':{'HTTPStatusCode':404}}
+                            raise exc
+                        return super().get_object(Key=Key,**kwargs)
+                    def head_bucket(self,Bucket):
+                        self.assert_bucket=Bucket;self.bucket_checks+=1
+                dest=NewObject();result=run(Memory({'a':b'paper'}),dest)
+                self.assertEqual(result,{'copied':1,'verified_existing':0,'failed':0,'verified_bytes':5})
+                self.assertEqual(dest.items['a'],b'paper');self.assertEqual(dest.uploads,1)
+                self.assertEqual(dest.bucket_checks,1);self.assertEqual(dest.assert_bucket,'backup')
+    def test_missing_or_inaccessible_bucket_never_uploads(self):
+        for code,status in [('NoSuchBucket',404),('AccessDenied',403),(None,404),('InternalError',500)]:
+            with self.subTest(code=code,status=status):
+                class BadBucket(Memory):
+                    def get_object(self,**_):raise RemoteFailure(None,404)
+                    def head_bucket(self,**_):raise RemoteFailure(code,status)
+                dest=BadBucket({});out=io.StringIO()
+                with contextlib.redirect_stdout(out):result=module.backup(Memory({'a':b'paper'}),dest,'source','backup')
+                self.assertEqual(result['failed'],1);self.assertEqual(dest.uploads,0)
+                self.assertIn('verify_backup_bucket',out.getvalue())
+    def test_other_read_failures_never_upload_or_check_bucket(self):
+        for code,status in [(None,403),(None,500),('AccessDenied',404),('NoSuchBucket',404),('NoSuchKey',500)]:
+            with self.subTest(code=code,status=status):
+                class BadRead(Memory):
+                    def get_object(self,**_):raise RemoteFailure(code,status)
+                    def head_bucket(self,**_):raise AssertionError('must not check bucket')
+                dest=BadRead({});result=run(Memory({'a':b'paper'}),dest)
+                self.assertEqual(result['failed'],1);self.assertEqual(dest.uploads,0)
+    def test_code_less_404_still_rejects_corrupt_upload(self):
+        class Corrupt(Memory):
+            def get_object(self,Key,**kwargs):
+                if Key not in self.items:raise RemoteFailure(None,404)
+                return super().get_object(Key=Key,**kwargs)
+        dest=Corrupt({});dest.corrupt=True
+        result=run(Memory({'a':b'paper'}),dest)
+        self.assertEqual(result['failed'],1);self.assertEqual(result['verified_bytes'],0)
     def test_error_diagnostics_are_safe_and_identify_operation(self):
         details=module.failure_details(RemoteFailure('AccessDenied',403),'read_backup','private/student/paper.pdf')
         self.assertEqual(details['code'],'AccessDenied');self.assertEqual(details['http_status'],403)
