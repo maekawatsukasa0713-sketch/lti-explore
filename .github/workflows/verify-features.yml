@@ -20,6 +20,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: python tests/storage-backup.test.py
+      - run: python tests/storage-restore.test.py
       - run: npm ci --prefix tests/backend-security
       - run: npm test --prefix tests/backend-security
       - run: node tests/backend-security/support.mjs
