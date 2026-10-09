@@ -8,6 +8,9 @@ spec=importlib.util.spec_from_file_location('backup',Path(__file__).resolve().pa
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 class Missing(Exception):
     response={'Error':{'Code':'NoSuchKey'}}
+class RemoteFailure(Exception):
+    def __init__(self,code,status):
+        self.response={'Error':{'Code':code,'Message':'SECRET PASSWORD'},'ResponseMetadata':{'HTTPStatusCode':status}}
 class Memory:
     def __init__(self,items):self.items=items.copy();self.uploads=0;self.corrupt=False;self.denied=False;self.changed=False
     def get_paginator(self,_):return self
@@ -25,6 +28,27 @@ class Memory:
 def run(source,dest):
     with contextlib.redirect_stdout(io.StringIO()):return module.backup(source,dest,'source','backup')
 class BackupTests(unittest.TestCase):
+    def test_error_diagnostics_are_safe_and_identify_operation(self):
+        details=module.failure_details(RemoteFailure('AccessDenied',403),'read_backup','private/student/paper.pdf')
+        self.assertEqual(details['code'],'AccessDenied');self.assertEqual(details['http_status'],403)
+        self.assertEqual(details['operation'],'read_backup')
+        self.assertEqual(details['object_sha256'],hashlib.sha256(b'private/student/paper.pdf').hexdigest())
+        text=str(details);self.assertNotIn('SECRET',text);self.assertNotIn('private/student',text)
+        self.assertIsNone(module.failure_details(RemoteFailure('SECRET\nPASSWORD',403),'read_backup','a')['code'])
+    def test_remote_denial_is_logged_and_never_copied(self):
+        class Denied(Memory):
+            def get_object(self,**_):raise RemoteFailure('AccessDenied',403)
+        dest=Denied({});out=io.StringIO()
+        with contextlib.redirect_stdout(out):result=module.backup(Memory({'a':b'paper'}),dest,'source','backup')
+        self.assertEqual(result['failed'],1);self.assertEqual(dest.uploads,0)
+        self.assertIn('read_backup',out.getvalue());self.assertIn('AccessDenied',out.getvalue())
+        self.assertNotIn('SECRET PASSWORD',out.getvalue())
+    def test_upload_failure_has_correct_stage(self):
+        class UploadDenied(Memory):
+            def upload_fileobj(self,*args,**kwargs):raise RemoteFailure('NotImplemented',501)
+        out=io.StringIO()
+        with contextlib.redirect_stdout(out):result=module.backup(Memory({'a':b'paper'}),UploadDenied({}),'source','backup')
+        self.assertEqual(result['failed'],1);self.assertIn('upload_backup',out.getvalue())
     def test_equal_verified_without_overwrite(self):
         source=Memory({'a':b'paper'});dest=Memory(source.items)
         result=run(source,dest);self.assertEqual(result['verified_existing'],1);self.assertEqual(dest.uploads,0);self.assertEqual(result['failed'],0)
