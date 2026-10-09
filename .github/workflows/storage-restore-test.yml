@@ -1,4 +1,4 @@
-name: Verify private Storage restore
+name: Recover temporary Storage restore cleanup
 on:
   workflow_dispatch:
     inputs:
@@ -31,9 +31,11 @@ jobs:
         run: python tests/storage-restore.test.py
       - name: Install pinned restore dependencies
         run: python -m pip install --quiet boto3==1.43.110 PyMuPDF==1.28.2
-      - name: Restore, verify contents and document opening, then remove test copies
+      - name: Remove verified temporary copies from the first restore run
         env:
           TEST_ACCESS_KEY_ID: ${{ secrets.TEST_S3_ACCESS_KEY_ID }}
           TEST_SECRET_ACCESS_KEY: ${{ secrets.TEST_S3_SECRET_ACCESS_KEY }}
           EXPECTED_FILES: ${{ inputs.expected_files || '539' }}
+          CLEANUP_ONLY_RUN_ID: '37919241574'
+          CLEANUP_ONLY_RUN_ATTEMPT: '1'
         run: python scripts/restore-storage-test.py

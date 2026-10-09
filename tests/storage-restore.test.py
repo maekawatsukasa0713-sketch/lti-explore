@@ -73,13 +73,12 @@ class Client:
         if self.drop_metadata:
             self.buckets[Bucket][Key]['ContentType'] = 'application/octet-stream'
 
-    def delete_objects(self, Bucket, Delete):
+    def delete_object(self, Bucket, Key):
         assert Bucket == TARGET
-        self.writes.append(('delete_objects', Bucket))
+        self.writes.append(('delete_object', Bucket))
         if self.cleanup_error:
-            return {'Errors': [{'Code': 'AccessDenied'}]}
-        for row in Delete['Objects']:
-            self.buckets[Bucket].pop(row['Key'], None)
+            raise PermissionError('cleanup denied')
+        self.buckets[Bucket].pop(Key, None)
         return {}
 
     def delete_bucket(self, Bucket):
@@ -193,6 +192,30 @@ class RestoreTests(unittest.TestCase):
         for run_id in ['../lti-documents', '', 'hello', '1\n2']:
             with self.assertRaises(ValueError):
                 restore.target_name(run_id, '1')
+
+    def test_bulk_delete_is_never_used_for_cleanup(self):
+        client = Client()
+        def reject_bulk(*_, **__):
+            raise RuntimeError('bulk DeleteObjects returns HTTP 400')
+        client.delete_objects = reject_bulk
+        result = self.run_restore(client)
+        self.assertTrue(result['cleanup_success'])
+
+    def test_recovery_cleanup_verifies_inventory_and_preserves_backup(self):
+        client = Client()
+        client.buckets[TARGET] = {k: dict(v) for k,v in client.buckets[restore.BACKUP_BUCKET].items()}
+        with redirect_stdout(StringIO()):
+            result = restore.cleanup_previous_run(client, TARGET, 2)
+        self.assertEqual(result['removed'], 2)
+        self.assertTrue(result['backup_unchanged'] and result['cleanup_success'])
+        self.assertIn('do-not-touch.pdf', client.buckets['lti-documents'])
+
+    def test_recovery_cleanup_refuses_unexpected_objects(self):
+        client = Client()
+        client.buckets[TARGET] = {'unexpected.pdf': {'data': b'important'}}
+        with self.assertRaises(ValueError):
+            restore.cleanup_previous_run(client, TARGET, 2)
+        self.assertEqual(client.writes, [])
 
     def test_word_document_structure_is_opened_without_extraction(self):
         with tempfile.NamedTemporaryFile() as tmp:

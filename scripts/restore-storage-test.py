@@ -133,16 +133,35 @@ def restore_object(client, target, row):
 def cleanup(client, target):
     validate_target(target)
     rows = snapshot(client, target)
-    for offset in range(0, len(rows), 500):
-        response = client.delete_objects(Bucket=target, Delete={
-            'Objects': [{'Key': row[0]} for row in rows[offset:offset + 500]], 'Quiet': True})
-        if response.get('Errors'):
-            raise RuntimeError('restore cleanup did not delete every test object')
+    # Use the individually supported DeleteObject path. The live S3 endpoint
+    # returned a code-less HTTP 400 for SDK-generated bulk DeleteObjects.
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(client.delete_object, Bucket=target, Key=row[0]) for row in rows]
+        for future in as_completed(futures):
+            future.result()
     if snapshot(client, target):
         raise RuntimeError('restore cleanup left test objects')
     client.delete_bucket(Bucket=target)
     if target in {b['Name'] for b in client.list_buckets()['Buckets']}:
         raise RuntimeError('restore cleanup left the test bucket')
+
+
+def cleanup_previous_run(client, target, expected_count):
+    """Recover an owned disposable bucket only if its inventory matches backup."""
+    validate_target(target)
+    original = snapshot(client, BACKUP_BUCKET)
+    restored = snapshot(client, target)
+    if expected_count < 1 or len(original) != expected_count or len(restored) != expected_count:
+        raise ValueError('cleanup recovery count does not match the verified restore run')
+    if [(row[0], row[1]) for row in restored] != [(row[0], row[1]) for row in original]:
+        raise ValueError('cleanup recovery inventory differs from backup; refusing deletion')
+    cleanup(client, target)
+    result = {'cleanup_success': True, 'removed': len(restored), 'destination': target,
+              'backup_unchanged': snapshot(client, BACKUP_BUCKET) == original}
+    if not result['backup_unchanged']:
+        raise RuntimeError('backup changed during cleanup recovery')
+    print(json.dumps(result, sort_keys=True), flush=True)
+    return result
 
 
 def restore(client, target, expected_count, viewer=open_document, access_probe=public_access_blocked):
@@ -255,6 +274,10 @@ def main():
                                         request_checksum_calculation='when_required',
                                         response_checksum_validation='when_required'))
     try:
+        if os.environ.get('CLEANUP_ONLY_RUN_ID'):
+            previous_target = target_name(os.environ['CLEANUP_ONLY_RUN_ID'], os.environ.get('CLEANUP_ONLY_RUN_ATTEMPT', '1'))
+            result = cleanup_previous_run(client, previous_target, int(os.environ['EXPECTED_FILES']))
+            return
         result = restore(client, target, int(os.environ['EXPECTED_FILES']))
     except Exception as exc:
         print('::error::Restore preflight failed ' + json.dumps(
