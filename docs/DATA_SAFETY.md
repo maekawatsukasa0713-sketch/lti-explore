@@ -22,9 +22,9 @@
 
 無料組織で新規作成された `phsipmakguioitumknzy` は、読み取り確認でpublicテーブル・Authユーザー・Storageバケット・ファイル・Edge Functionsがすべて0件だった。既存アプリの接続先にも使用していない。空のこのDBを削除せず一時停止し、APIのINACTIVEを確認した。既存試験DB `bvjjnzhhxieyxkeorurb` と本番は停止していない。
 
-[Freeの稼働中プロジェクトは所有・管理する組織全体で2つまでで、停止中は枠に数えない](https://supabase.com/docs/guides/platform/billing-on-supabase)。空DBの停止により復元確認用DBの移転に使える枠を空けた。Storage容量は組織単位のため、既存試験組織の容量に余裕を確保するには、復元確認用DBの移転先に別のFree組織を使う。組織の作成時に新しいDBを作る必要はない。
+[Freeの稼働中プロジェクトは所有・管理する組織全体で2つまでで、停止中は枠に数えない](https://supabase.com/docs/guides/platform/billing-on-supabase)。空DBの停止により復元確認用DBの移転に使える枠を空けた。移転先には既存のFree組織 `LTI-test` を使用した。Storage容量は組織単位だが、復元DBのStorage登録情報は実ファイル本体とは異なるため、登録サイズの合算だけで実使用量や超過を判定しない。実使用量の確認は別途必要。
 
-復元確認用DBの移転はまだ完了していない。ソースはPro組織のままであり、移転後に組織のFreeプラン・接続・データ保持を再確認してから完了とする。
+2026-10-11 18:55 JST、復元確認用 `zzaljxqectngziawxakn` の `LTI-test`（`abmlceklqpwozbgyuxha`、Free）への移転を確認した。ACTIVE_HEALTHYで、publicの9テーブルは18:42 JSTの移転前記録と件数・全行の照合値が一致し、Authユーザー40件も保持されている。Storageは非公開 `lti-documents` の登録539件・446,601,138バイトを確認したが、実ファイル本体は復元DBへコピーしていない。19:02 JSTにAPIへ再接続し、試験・復元確認用が同じFree組織、本番が従来のPro組織であることを再確認した。
 
 ## 最新のDB復元検証（2026-10-11）
 
