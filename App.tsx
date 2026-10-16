@@ -4365,6 +4365,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     </div>
                   </div>
 
+                  {tabMode('研究テーマを見つける') === 'enabled' && (
                   <button
                     type="button"
                     onClick={()=>{setDetailPaper(null);setCurrentTab('研究テーマを見つける');}}
@@ -4379,6 +4380,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <span className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-emerald-800">研究を探しはじめる <ChevronRight className="h-4 w-4"/></span>
                     </div>
                   </button>
+                  )}
 
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                     <h3 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">📢 LTI運営からのお知らせ</h3>
