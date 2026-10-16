@@ -4353,10 +4353,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-[10px] font-bold tracking-[.18em] text-emerald-200">RESEARCH MATCH</p>
-                        <h3 className="mt-1 text-lg font-extrabold">何を研究するか迷ったら、4つの質問から探す</h3>
-                        <p className="mt-1 text-xs leading-6 text-emerald-50">「みんなの論文」の公開研究をもとに、自分の興味に近い研究テーマを見つけます。</p>
+                        <h3 className="mt-1 text-lg font-extrabold">気になる研究を見ながら、自分のテーマを探す</h3>
+                        <p className="mt-1 text-xs leading-6 text-emerald-50">質問は複数選択・スキップOK。公開研究への反応から、興味をさらに広げられます。</p>
                       </div>
-                      <span className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-emerald-800">診断をはじめる <ChevronRight className="h-4 w-4"/></span>
+                      <span className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-emerald-800">研究を探しはじめる <ChevronRight className="h-4 w-4"/></span>
                     </div>
                   </button>
 
