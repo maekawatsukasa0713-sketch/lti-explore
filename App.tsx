@@ -3077,6 +3077,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const teacherMenuBase = [
       { name: 'ホーム', icon: Home },
       { name: 'みんなの論文', icon: BookOpen },
+      { name: '研究テーマを見つける', icon: Lightbulb },
       { name: '学会・コンテスト', icon: Trophy },
       { name: '教材', icon: FileUp },
       { name: '課題配信', icon: FileText },
@@ -3091,7 +3092,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     const normalizedTeacherMenuOrder = teacherMenuOrder.map(name=>name==='進捗管理'?'課題管理':name);
     const teacherMenuNames = prioritizeMenuItems(
       reconcileMenuOrder(normalizedTeacherMenuOrder, teacherMenuBase.map(m => m.name)),
-      ['ホーム', 'みんなの論文', '学会・コンテスト']
+      ['ホーム', 'みんなの論文', '研究テーマを見つける', '学会・コンテスト']
     );
     const teacherMenu = teacherMenuNames
       .map(name => teacherMenuBase.find(m => m.name === name))
@@ -3215,6 +3216,23 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     </div>
                   </div>
 
+                  {tabMode('研究テーマを見つける') === 'enabled' && (
+                    <button
+                      type="button"
+                      onClick={()=>{setDetailPaper(null);setCurrentTab('研究テーマを見つける');}}
+                      className="w-full overflow-hidden rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-950 via-orange-800 to-amber-700 p-5 text-left text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold tracking-[.18em] text-orange-200">RESEARCH MATCH</p>
+                          <h3 className="mt-1 text-lg font-extrabold">生徒と一緒に、研究テーマを見つける</h3>
+                          <p className="mt-1 text-xs leading-6 text-orange-50">質問は複数選択・スキップOK。公開研究への反応から、授業や探究指導のヒントを探せます。</p>
+                        </div>
+                        <span className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-orange-800">研究を探しはじめる <ChevronRight className="h-4 w-4"/></span>
+                      </div>
+                    </button>
+                  )}
+
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                     <h3 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">📢 LTI運営からのお知らせ</h3>
                     {visibleNotices.length === 0 ? (
@@ -3258,6 +3276,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   </div>
                 </div>
 
+              ) : currentTab === '研究テーマを見つける' ? (
+                <ResearchThemeFinder papers={papers} onOpen={p=>{setDetailPaper(p);setCurrentTab('みんなの論文');setSidebarCollapsed(true);}} />
               ) : currentTab === 'みんなの論文' ? (
                 detailPaper ? <ResearchDetail key={String(detailPaper.id)} paper={detailPaper} onBack={()=>setDetailPaper(null)} /> : <ResearchLibrary papers={papers} onOpen={p=>{setDetailPaper(p);setSidebarCollapsed(true);}} />
               ) : currentTab === '教材' ? (
