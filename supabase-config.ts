@@ -18,8 +18,8 @@ export const APP_ENV: 'production' | 'staging' =
 
 export const IS_PRODUCTION = APP_ENV === 'production';
 
-const PROD_SUPABASE_URL = 'https://ozmulwqzybhiekmolvyk.supabase.co';
-const PROD_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_BigCuOz8nCUfNGtu8vPpHA_jbRyk67X';
+const PROD_SUPABASE_URL = 'https://qzowxrmrxyjifoabjryr.supabase.co';
+const PROD_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_pm8pMNtl8Ay3kIF_G4kfLw_IG4nb35b';
 
 const STAGING_SUPABASE_URL = 'https://bvjjnzhhxieyxkeorurb.supabase.co';
 // Staging currently exposes the legacy anon key; this is a browser-safe public key, not a service-role secret.
