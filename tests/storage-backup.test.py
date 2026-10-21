@@ -3,7 +3,10 @@ import hashlib
 import importlib.util
 import io
 from pathlib import Path
+import sys
+import types
 import unittest
+from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('backup',Path(__file__).resolve().parents[1]/'scripts/backup-storage.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 class Missing(Exception):
@@ -105,4 +108,73 @@ class BackupTests(unittest.TestCase):
         dest=Memory({});dest.denied=True;self.assertEqual(run(Memory({'a':b'paper'}),dest)['failed'],1);self.assertEqual(dest.uploads,0)
     def test_changed_source_fails(self):
         source=Memory({'a':b'paper'});source.changed=True;self.assertEqual(run(source,Memory({}))['failed'],1)
+
+class ClientConfigurationTests(unittest.TestCase):
+    def configured_backup(self, regions, missing_credential=None):
+        # Exercise main and the byte-verifying copy with in-memory S3 clients.
+        # Isolate the environment so no real credentials or network are used.
+        env={
+            'PROD_ENDPOINT':'https://production.example/storage/v1/s3',
+            'STAGING_ENDPOINT':'https://staging.example/storage/v1/s3',
+            'PROD_ACCESS_KEY_ID':'prod-access',
+            'PROD_SECRET_ACCESS_KEY':'prod-secret',
+            'STAGING_ACCESS_KEY_ID':'test-access',
+            'STAGING_SECRET_ACCESS_KEY':'test-secret',
+            'SOURCE_BUCKET':'source',
+            'BACKUP_BUCKET':'backup',
+            **regions,
+        }
+        if missing_credential:
+            env.pop(missing_credential)
+        source=Memory({'a':b'paper'});dest=Memory({});calls=[]
+        def client(service, **kwargs):
+            calls.append({'service':service,**kwargs})
+            return source if len(calls)==1 else dest
+        boto3=types.ModuleType('boto3');boto3.client=client
+        config=types.ModuleType('botocore.config');config.Config=lambda **kwargs:kwargs
+        imports={'boto3':boto3,'botocore':types.ModuleType('botocore'),'botocore.config':config}
+        with patch.dict(sys.modules,imports),patch.dict(module.os.environ,env,clear=True),contextlib.redirect_stdout(io.StringIO()) as output:
+            if missing_credential:
+                with self.assertRaisesRegex(SystemExit,'credentials are incomplete'):
+                    module.main()
+                self.assertEqual(calls,[])
+            else:
+                module.main()
+                self.assertEqual(source.items,{'a':b'paper'})
+                self.assertEqual(dest.items,source.items)
+                self.assertEqual(dest.uploads,1)
+                self.assertIn('"failed": 0',output.getvalue())
+                self.assertIn('"verified_bytes": 5',output.getvalue())
+        self.assertNotIn('prod-secret',output.getvalue())
+        self.assertNotIn('test-secret',output.getvalue())
+        return calls
+
+    def test_tokyo_source_and_singapore_backup_have_independent_regions(self):
+        source,dest=self.configured_backup({'PROD_AWS_REGION':'ap-northeast-1','TEST_AWS_REGION':'ap-southeast-1','AWS_REGION':'us-east-1'})
+        self.assertEqual(source['region_name'],'ap-northeast-1')
+        self.assertEqual(dest['region_name'],'ap-southeast-1')
+        self.assertEqual(source['endpoint_url'],'https://production.example/storage/v1/s3')
+        self.assertEqual(dest['endpoint_url'],'https://staging.example/storage/v1/s3')
+        self.assertEqual(source['aws_access_key_id'],'prod-access')
+        self.assertEqual(dest['aws_access_key_id'],'test-access')
+        self.assertEqual(source['config'],{'signature_version':'s3v4','s3':{'addressing_style':'path'}})
+        self.assertEqual(dest['config'],source['config'])
+
+    def test_legacy_shared_region_remains_supported(self):
+        calls=self.configured_backup({'AWS_REGION':'eu-central-1'})
+        self.assertEqual([call['region_name'] for call in calls],['eu-central-1','eu-central-1'])
+
+    def test_individual_override_does_not_change_other_client_fallback(self):
+        calls=self.configured_backup({'PROD_AWS_REGION':'ap-northeast-1','AWS_REGION':'ap-southeast-1'})
+        self.assertEqual([call['region_name'] for call in calls],['ap-northeast-1','ap-southeast-1'])
+
+    def test_missing_or_empty_regions_use_existing_workflow_region(self):
+        for regions in ({},{'PROD_AWS_REGION':'','TEST_AWS_REGION':'','AWS_REGION':''}):
+            with self.subTest(regions=regions):
+                calls=self.configured_backup(regions)
+                self.assertEqual([call['region_name'] for call in calls],['ap-southeast-1','ap-southeast-1'])
+
+    def test_region_overrides_never_bypass_missing_credentials(self):
+        self.configured_backup({'PROD_AWS_REGION':'ap-northeast-1','TEST_AWS_REGION':'ap-southeast-1'},missing_credential='PROD_SECRET_ACCESS_KEY')
+
 if __name__=='__main__':unittest.main()

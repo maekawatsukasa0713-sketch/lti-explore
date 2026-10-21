@@ -102,12 +102,14 @@ def main():
     if any(not os.environ.get(key) for key in required):
         raise SystemExit('Storage backup credentials are incomplete; nothing copied')
     cfg = Config(signature_version='s3v4', s3={'addressing_style': 'path'})
-    def client(prefix, endpoint):
+    def client(prefix, endpoint, region_key):
         return boto3.client('s3', endpoint_url=os.environ[endpoint],
                             aws_access_key_id=os.environ[prefix + '_ACCESS_KEY_ID'],
                             aws_secret_access_key=os.environ[prefix + '_SECRET_ACCESS_KEY'],
-                            region_name=os.environ['AWS_REGION'], config=cfg)
-    result = backup(client('PROD', 'PROD_ENDPOINT'), client('STAGING', 'STAGING_ENDPOINT'),
+                            region_name=os.environ.get(region_key) or os.environ.get('AWS_REGION') or 'ap-southeast-1',
+                            config=cfg)
+    result = backup(client('PROD', 'PROD_ENDPOINT', 'PROD_AWS_REGION'),
+                    client('STAGING', 'STAGING_ENDPOINT', 'TEST_AWS_REGION'),
                     os.environ['SOURCE_BUCKET'], os.environ['BACKUP_BUCKET'])
     if result['failed']:
         raise SystemExit(1)
