@@ -17,8 +17,8 @@ jobs:
           persist-credentials: false
       - name: Check backup credentials
         env:
-          PROD_ACCESS_KEY_ID: ${{ secrets.PROD_S3_ACCESS_KEY_ID }}
-          PROD_SECRET_ACCESS_KEY: ${{ secrets.PROD_S3_SECRET_ACCESS_KEY }}
+          PROD_ACCESS_KEY_ID: ${{ secrets.MIGRATION_TARGET_S3_ACCESS_KEY_ID }}
+          PROD_SECRET_ACCESS_KEY: ${{ secrets.MIGRATION_TARGET_S3_SECRET_ACCESS_KEY }}
           STAGING_ACCESS_KEY_ID: ${{ secrets.TEST_S3_ACCESS_KEY_ID }}
           STAGING_SECRET_ACCESS_KEY: ${{ secrets.TEST_S3_SECRET_ACCESS_KEY }}
         shell: bash
@@ -31,14 +31,14 @@ jobs:
         run: python -m pip install --quiet boto3
       - name: Copy and verify production objects
         env:
-          PROD_ACCESS_KEY_ID: ${{ secrets.PROD_S3_ACCESS_KEY_ID }}
-          PROD_SECRET_ACCESS_KEY: ${{ secrets.PROD_S3_SECRET_ACCESS_KEY }}
+          PROD_ACCESS_KEY_ID: ${{ secrets.MIGRATION_TARGET_S3_ACCESS_KEY_ID }}
+          PROD_SECRET_ACCESS_KEY: ${{ secrets.MIGRATION_TARGET_S3_SECRET_ACCESS_KEY }}
           STAGING_ACCESS_KEY_ID: ${{ secrets.TEST_S3_ACCESS_KEY_ID }}
           STAGING_SECRET_ACCESS_KEY: ${{ secrets.TEST_S3_SECRET_ACCESS_KEY }}
-          PROD_ENDPOINT: ${{ vars.PROD_S3_ENDPOINT || 'https://ozmulwqzybhiekmolvyk.storage.supabase.co/storage/v1/s3' }}
+          PROD_ENDPOINT: https://qzowxrmrxyjifoabjryr.storage.supabase.co/storage/v1/s3
           STAGING_ENDPOINT: https://bvjjnzhhxieyxkeorurb.storage.supabase.co/storage/v1/s3
           SOURCE_BUCKET: lti-documents
           BACKUP_BUCKET: lti-production-backup
-          PROD_AWS_REGION: ${{ vars.PROD_AWS_REGION || 'ap-southeast-1' }}
+          PROD_AWS_REGION: ap-northeast-1
           TEST_AWS_REGION: ap-southeast-1
         run: python scripts/backup-storage.py
