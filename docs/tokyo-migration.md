@@ -1,6 +1,6 @@
 # 本番の東京移行準備（2026-10-21）
 
-## 最新の実行状況（2026-10-21 05:35 UTC時点）
+## 最新の実行状況（2026-10-21 05:57 UTC時点）
 
 - 本番切替・DB復元はまだ行っていない。現在の本番はシンガポール。
 - DB接続の読み取りチェックとroles/schema/dataの一時dumpは両接続成功。発行済みID・パスワード変更なし。
@@ -12,9 +12,11 @@
 - ブラウザのコピー操作が空の文字列を返すことを確認。表示中の既存アクセスキーIDをGitHubの `MIGRATION_TARGET_S3_ACCESS_KEY_ID` に再登録し、Secret updatedを確認。キー自体の新規作成・ローテーションはしていない。
 - 再実行 `39549629588` もバケット作成時に `InvalidAccessKeyId` で停止。2回目の転記では表セルのテキストがIDではなくCopyボタン文字列だったことを確認。
 - 表セル内の実際のtextboxから32文字のアクセスキーIDを取得して再登録し、Secret updatedを確認。秘密アクセスキーは取得できていない。
-- 再実行 `39550057024` は東京S3のバケット作成・DBバックアップ保存を通過し、539件のStorageコピー・照合中。キーID修正により接続成功を確認。完了・manifest検証はまだ確認していない。
+- 再実行 `39550057024` は成功。非公開 `lti-migration-backups` の `39550057024-1/` へDB/config 9ファイル・実ファイル539件（446,601,138bytes）とmanifestを保存・全件read-back照合済み。これはオンライン取得で、最終切替用の書込み停止スナップショットではない。
+- PR #59をCI成功後mainへ反映。復元前点検 run `39552283030` が成功。9ファイルのmanifest整合性を再確認。50ユーザー、50 identities、9校、584レコード、2 MFA factors、539 Storage objects、12 migration history recordsを確認。
+- PR #60に東京側限定の初回復元処理を準備。DB全体を単一トランザクションで復元し、公開/Auth inventoryの不一致時はロールバック。ファイル本体・表示用メタデータと所有者を別途照合。まだ実行前。
 - `MIGRATION_TARGET_S3_SECRET_ACCESS_KEY` はコピー開始で有効性を確認。S3キーの再発行・再入力は不要。無関係なDB/利用者パスワードを再設定しない。
-- 認証Rate Limitsに差を発見。旧本番のtoken refreshes/sign-ups and sign-insは両方3000、東京は150/30。東京画面へ3000/3000を入力済みだが未保存。ブラウザの保護設定緩和の操作時確認ルールに従い、利用者に最終保存を依頼する。
+- 認証Rate Limitsは利用者が保存済み。東京側のtoken refreshes/sign-ups and sign-insは両方3000で旧本番と一致。保存後の値とSave changes無効を確認。再設定不要。
 - Confirm sign up、Magic link/OTP、Reauthenticationは件名と本文一致。Invite userとChange emailは本文一致、件名はUIの伏字により未照合。
 
 以下は準備時点の記録を保持している。未登録・未接続という過去の記述より、上記の最新結果を優先する。
