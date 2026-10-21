@@ -1,4 +1,4 @@
-name: Tokyo restore inspection
+name: Tokyo initial restore
 on:
   workflow_dispatch:
 permissions:
@@ -7,7 +7,7 @@ concurrency:
   group: tokyo-migration
   cancel-in-progress: false
 jobs:
-  inspect:
+  restore:
     if: github.repository == 'maekawatsukasa0713-sketch/lti-explore' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -21,7 +21,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/lti-backup-python"
           "$RUNNER_TEMP/lti-backup-python/bin/pip" install --quiet boto3==1.40.0 botocore==1.40.0 s3transfer==0.13.1 jmespath==1.0.1 python-dateutil==2.9.0.post0 six==1.17.0 urllib3==2.5.0
           docker pull postgres:17.6-bookworm
-      - name: Inspect private backup for restoration
+      - name: Restore Tokyo database and verify files
         env:
           MIGRATION_SOURCE_DB_PASSWORD: ${{ secrets.MIGRATION_SOURCE_DB_PASSWORD }}
           MIGRATION_TARGET_DB_PASSWORD: ${{ secrets.MIGRATION_TARGET_DB_PASSWORD }}
@@ -31,4 +31,4 @@ jobs:
       - name: Remove sensitive temporary files
         if: always()
         run: rm -rf -- "$RUNNER_TEMP"/lti-tokyo-restore-*
-      # No public artifacts, source mutations, restore, or production cutover.
+      # No public artifacts, source mutations, or production cutover.
