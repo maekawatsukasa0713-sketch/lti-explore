@@ -1,0 +1,35 @@
+name: Tokyo migration read-only preflight
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tokyo-migration-preflight
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'maekawatsukasa0713-sketch/lti-explore' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned official tools (no database credentials)
+        shell: bash
+        run: |
+          set -eu
+          npm install --prefix "$RUNNER_TEMP/lti-migration-cli" --no-audit --no-fund supabase@2.121.0
+          docker pull postgres:17.6-bookworm
+      - name: Check both databases and generate temporary source dumps
+        env:
+          MIGRATION_SOURCE_DB_PASSWORD: ${{ secrets.MIGRATION_SOURCE_DB_PASSWORD }}
+          MIGRATION_TARGET_DB_PASSWORD: ${{ secrets.MIGRATION_TARGET_DB_PASSWORD }}
+        run: python3 scripts/tokyo-migration-preflight.py "$RUNNER_TEMP/lti-migration-cli/node_modules/.bin/supabase"
+      - name: Remove temporary sensitive files
+        if: always()
+        shell: bash
+        run: |
+          set -eu
+          rm -rf -- "$RUNNER_TEMP"/lti-tokyo-preflight-*
+      # Intentionally no artifact upload, restore, deployment, or production cutover.
