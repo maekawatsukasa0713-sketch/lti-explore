@@ -88,6 +88,23 @@ def perform(cli, directory, env, passwords, source, target, prefix):
         inventories[filename] = sql('source', directory, env, Path(__file__).with_name(filename).read_text())
     # The official CLI produces only private temporary files; it never restores.
     preflight.perform(cli, directory, passwords[0], passwords[1], env)
+    source_url = preflight.connection_url('source', passwords[0])
+    for filename, flags in (('history_schema.sql', []), ('history_data.sql', ['--data-only', '--use-copy'])):
+        path = directory / filename
+        path.touch(mode=0o600)
+        preflight.run_private('migration-history-dump', [cli, 'db', 'dump', '--db-url', source_url,
+                              '--schema', 'supabase_migrations', '-f', str(path), *flags],
+                              cwd=directory, env=env)
+        require(path.stat().st_size > 0, 'migration-history-empty')
+    custom = sql('source', directory, env, """SELECT jsonb_build_object(
+      'policies', (SELECT jsonb_agg(to_jsonb(p)) FROM pg_policies p WHERE schemaname IN ('public','auth','storage')),
+      'custom_triggers', (SELECT jsonb_agg(pg_get_triggerdef(t.oid)) FROM pg_trigger t
+        JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_namespace pn ON pn.oid=p.pronamespace
+        WHERE NOT t.tgisinternal AND n.nspname IN ('auth','storage') AND pn.nspname NOT IN ('auth','storage')),
+      'publications', (SELECT jsonb_agg(to_jsonb(p)) FROM pg_publication_tables p),
+      'extensions', (SELECT jsonb_agg(extname) FROM pg_extension));""")
+    (directory / 'managed-customizations.json').write_text(custom)
     for filename, before in inventories.items():
         after = sql('source', directory, env, Path(__file__).with_name(filename).read_text())
         require(json.loads(before) == json.loads(after), 'source-changed-during-dump')
@@ -102,7 +119,8 @@ def perform(cli, directory, env, passwords, source, target, prefix):
     target.create_bucket(Bucket=BUCKET)
     private_bucket_guard(directory, env)
     manifest = {'kind': 'online-backup-not-final-cutover-snapshot', 'files': [], 'objects': []}
-    for filename in ('roles.sql', 'schema.sql', 'data.sql', 'storage-metadata.json',
+    for filename in ('roles.sql', 'schema.sql', 'data.sql', 'history_schema.sql', 'history_data.sql',
+                     'managed-customizations.json', 'storage-metadata.json',
                      'migration-inventory.sql.json', 'migration-auth-inventory.sql.json'):
         manifest['files'].append(upload_verified(target, prefix, filename, directory / filename))
     total = 0
