@@ -86,7 +86,22 @@ def assertion_sql(query, expected, label):
             + '; END IF; END $lti_verify$;\n')
 
 
+
+def prepare_roles(backup, directory):
+    original=(directory/'roles.sql').read_text()
+    grant='GRANT SET ON PARAMETER "log_min_messages" TO "supabase_realtime_admin";'
+    backup.require(original.count(grant)==1,'platform-parameter-grant-shape')
+    assertion="""DO $platform_permission$ BEGIN
+    IF NOT has_parameter_privilege('supabase_realtime_admin','log_min_messages','SET')
+    THEN RAISE EXCEPTION 'platform-parameter-permission-missing'; END IF;
+    END $platform_permission$;"""
+    # The source and target ACLs were independently verified identical. Preserve
+    # the platform-owned existing grant; never elevate the restoration login.
+    (directory/'roles_restore.sql').write_text(original.replace(grant,assertion))
+
+
 def restore_database(backup, directory, env):
+    prepare_roles(backup, directory)
     # Refuse any target containing application data; backup namespace is preserved.
     guard = """DO $guard$ BEGIN
     IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public')
@@ -114,7 +129,7 @@ def restore_database(backup, directory, env):
        THEN RAISE EXCEPTION 'backup-access'; END IF; END $guard$;
        NOTIFY pgrst, 'reload schema';"""
     (directory/'verify.sql').write_text(assertions)
-    target_psql(backup,directory,env,['guard.sql','roles.sql','schema.sql','replica.sql','data.sql',
+    target_psql(backup,directory,env,['guard.sql','roles_restore.sql','schema.sql','replica.sql','data.sql',
                                     'history_schema.sql','history_data.sql','custom.sql','verify.sql'])
 
 
