@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Inspect the verified private backup; no database writes or cutover.
-Only schema/table names and aggregate counts may reach logs.
+"""Restore the verified private backup into the fixed empty Tokyo target.
+No source writes, credential resets, production cutover, or public artifacts.
 """
 import hashlib
 import json
@@ -92,14 +92,21 @@ def main():
         (directory/'target.pgpass').write_text(f'{host}:5432:postgres:postgres.{ref}:{escaped}\n')
         env={k:os.environ[k] for k in ('PATH','HOME','TMPDIR','DOCKER_HOST','DOCKER_CONFIG','SSL_CERT_FILE','SSL_CERT_DIR') if k in os.environ}
         backup.private_bucket_guard(directory,env)
-        get_backup(client,directory)
+        manifest=get_backup(client,directory)
         inspect(directory)
+        ops_spec=importlib.util.spec_from_file_location('restore_ops',Path(__file__).with_name('tokyo-restore-operations.py'))
+        ops=importlib.util.module_from_spec(ops_spec)
+        ops_spec.loader.exec_module(ops)
+        backup.checkpoint('target-database-restore')
+        ops.restore_database(backup,directory,env)
+        backup.checkpoint('target-storage-restore')
+        ops.restore_objects(backup,directory,env,client,manifest,PREFIX)
         return 0
     except preflight.PreflightError as exc:
-        print(f'Restore inspection: FAIL ({exc}). Raw diagnostics suppressed.',flush=True)
+        print(f'Tokyo initial restore: FAIL ({exc}). Raw diagnostics suppressed.',flush=True)
         return 1
     except Exception as exc:
-        print('Restore inspection: FAIL ('+backup.safe_failure(exc)+'). Raw diagnostics suppressed.',flush=True)
+        print('Tokyo initial restore: FAIL ('+backup.safe_failure(exc)+'). Raw diagnostics suppressed.',flush=True)
         return 1
     finally:
         if directory is not None:
