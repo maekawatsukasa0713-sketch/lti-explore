@@ -76,7 +76,7 @@ def perform(directory,env):
         fixture.append('INSERT INTO auth.identities(provider_id,user_id,identity_data,provider,created_at,updated_at) VALUES ('+literal(u['id'])+','+literal(u['id'])+','+literal(json.dumps({'sub':u['id'],'email':u['email'],'email_verified':True}))+",'email',now(),now());")
         fixture.append('INSERT INTO public.lti_profiles(id,school_id,role,active,name,login_id) VALUES ('+','.join(literal(u[k]) for k in ('id','school','role'))+",true,'Migration verification',"+literal(u['login'])+');')
     record_id='migration-'+unique
-    fixture.append("INSERT INTO public.lti_records(kind,id,owner_id,school_id,data) VALUES ('assignments',"+literal(record_id)+','+literal(users[1]['id'])+','+literal(schools[0])+",'{\"title\":\"Migration verification\"}');")
+    fixture.append("INSERT INTO public.lti_records(kind,id,owner_id,data) VALUES ('assignments',"+literal(record_id)+','+literal(users[1]['id'])+','+literal(json.dumps({'title':'Migration verification','schoolId':schools[0]}))+');')
     ids=','.join(literal(u['id']) for u in users)
     cleanup="SET session_replication_role=replica; DELETE FROM public.lti_ai_usage WHERE user_id IN ("+ids+"); DELETE FROM public.lti_records WHERE id="+literal(record_id)+"; DELETE FROM public.lti_profiles WHERE id IN ("+ids+"); SET session_replication_role=origin; DELETE FROM auth.users WHERE id IN ("+ids+"); DELETE FROM public.lti_schools WHERE id IN ("+','.join(map(literal,schools))+');'
     created=False
