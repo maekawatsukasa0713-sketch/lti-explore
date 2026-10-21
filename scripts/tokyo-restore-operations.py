@@ -47,7 +47,10 @@ def target_psql(backup, directory, env, files):
             'role-alter': r'permission denied to alter role',
             'parameter': r'permission denied to set parameter',
         }.items() if re.search(pattern,result.stderr,re.I)]
-        print('Target restore transaction: FAIL; sqlstate='+code+location_text+'; reasons='+','.join(reasons), flush=True)
+        denied = re.search(r'(?:permission denied for|must be owner of) (?:schema|table|relation|function|sequence) "?([a-z_][a-z_0-9]*)"?', result.stderr)
+        role = re.search(r'(?:grant role|member of role|SET ROLE|alter role|create role) "([a-z_][a-z_0-9]*)"', result.stderr)
+        details = ('; object='+denied.group(1) if denied else '')+('; role='+role.group(1) if role else '')
+        print('Target restore transaction: FAIL; sqlstate='+code+location_text+'; reasons='+','.join(reasons)+details, flush=True)
         raise backup.preflight.PreflightError('target-restore-transaction')
     print('Target restore transaction: PASS', flush=True)
 
