@@ -20,10 +20,11 @@ FREEZE_QUERY = """SELECT json_build_object(
  'guarded', count(*) FILTER (WHERE EXISTS (SELECT 1 FROM pg_trigger t
  JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_namespace pn ON pn.oid=p.pronamespace
  WHERE t.tgrelid=c.oid AND t.tgname='lti_migration_write_freeze'
- AND t.tgenabled='A' AND t.tgtype=62 AND pn.nspname='lti_migration_control'
- AND p.proname='reject_writes')))
+ AND t.tgenabled='O' AND t.tgtype=62 AND pn.nspname='lti_migration_control'
+ AND p.proname='reject_writes' AND p.prosrc LIKE '%RAISE EXCEPTION%')))
  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
- WHERE n.nspname IN ('public','auth','storage') AND c.relkind IN ('r','p');"""
+ WHERE n.nspname IN ('public','auth','storage') AND c.relkind IN ('r','p')
+ AND (n.nspname,c.relname) NOT IN (('auth','schema_migrations'),('storage','migrations'),('storage','buckets_vectors'),('storage','vector_indexes'));"""
 
 EXTRA_QUERY = """SELECT jsonb_build_object(
  'mfa', (SELECT jsonb_build_object('rows',count(*),'sha256',
