@@ -1,39 +1,46 @@
-# 本番の東京移行準備（2026-10-21）
+# 本番の東京移行（2026-10-21）
 
-## 最新の実行状況（2026-10-21 06:24 UTC時点）
+## 現在の状態（2026-10-21 06:30 UTC）
 
-- 初回復元 run `39553210850` が成功。東京DBへ50アカウント・9校・584レコード・MFA2件と履歴を復元。発行済みIDとパスワードハッシュのinventoryを同一トランザクションで照合済み。
-- Storage 539件（446,601,138 bytes）は全件SHA256/read-back照合済み。owner/owner_idと元の作成日時・user_metadataも復元・照合済み。
-- 18ポリシー、36制約、既存27関数の定義とMFA factorsの集計ハッシュが両環境で一致。東京固有の標準 `rls_auto_enable` は維持。
-- 旧プラットフォーム所有の `log_min_messages` 権限は両環境ですでに同一のため、再GRANTを実行せず既存権限をassertする修正をPR #62で反映。権限拡大なし。
-- 初回機能試験 `39553665345` は検証用レコードが生成列へ値を入れたため、fixture作成をロールバック。PR #66で修正。
-- 再試験 `39554835759` は全項目成功：3検証ユーザーのパスワードログイン/role、学校間アクセス制限、非公開backup拒否、7MB超TUSアップロード/read-back、他校からのファイル拒否、認証付きAI設定、studentの管理操作拒否。試験データ削除後の元inventory一致も確認。AIの有料生成・実ユーザーMFA入力は未実施。
-- PR #64に本番接続先/CSP/バックアップ元の東京切替を準備済み。CI成功、まだDraft・未マージ。
-- PR #65はCI成功後マージ済み。06:22 UTC前後に旧本番の書込み停止を適用。40の業務/Auth/Storageテーブルにstatement triggerを設け、public/auth/storageのUPDATE拒否も実確認。プラットフォーム履歴と未使用Vector表は対象外。権限/所有者は変更しない。
-- 最終snapshot run `39555003848` 実行中。停止後の全業務/Auth/MFA/owner/policyの一致はPASS、ファイルは500/539まで再照合済み。
-- 最終検証失敗で切替を中止する場合は `scripts/tokyo-source-unfreeze.sql` を旧本番へapply_migrationし、当方のtrigger関数だけをno-opへ戻す。東京へ本番書込み後は差分再同期前に戻さない。
-- **現在の本番接続先はシンガポールで書込み停止中。本番切替は未実行。初回復元を空DB前提のまま再実行しない。**
+**本番は東京へ切替済み。** https://explore.labtoimpact.com/ は `qzowxrmrxyjifoabjryr`（ap-northeast-1）へ接続する。
+旧シンガポール `ozmulwqzybhiekmolvyk` は削除・停止せず、書込み停止状態で復旧用に保持する。
+試験 `bvjjnzhhxieyxkeorurb` とPreviewの接続先は変更していない。
 
-### 以下は05:57 UTC時点の履歴（最新状態は上記）
+### 実行結果
 
-- 本番切替・DB復元はまだ行っていない。現在の本番はシンガポール。
-- DB接続の読み取りチェックとroles/schema/dataの一時dumpは両接続成功。発行済みID・パスワード変更なし。
-- 東京側の `ANTHROPIC_API_KEY` を保存済み。移行元に `ANTHROPIC_MODEL` の追加設定は表示されていない。
-- 東京側SMTPは利用者の保存後、別画面の再読込で有効・保存済みを確認。Resendを使用。秘密値は取得・記録していない。
-- パスワード再設定メールの件名・本文、MFA（TOTP有効・Phone無効・最大10・AAL1期限有効）、セッション設定は両環境で一致。
-- PR #56（private backup）と #57（秘密値を出さない段階別診断）はCI成功後にmainへ反映済み。
-- バックアップ実行 `39548419427` はDB dump成功後、東京S3バケット作成前に失敗。Storage側ログで `403 / InvalidAccessKeyId` を確認。永続バックアップ成功とは扱わない。
-- ブラウザのコピー操作が空の文字列を返すことを確認。表示中の既存アクセスキーIDをGitHubの `MIGRATION_TARGET_S3_ACCESS_KEY_ID` に再登録し、Secret updatedを確認。キー自体の新規作成・ローテーションはしていない。
-- 再実行 `39549629588` もバケット作成時に `InvalidAccessKeyId` で停止。2回目の転記では表セルのテキストがIDではなくCopyボタン文字列だったことを確認。
-- 表セル内の実際のtextboxから32文字のアクセスキーIDを取得して再登録し、Secret updatedを確認。秘密アクセスキーは取得できていない。
-- 再実行 `39550057024` は成功。非公開 `lti-migration-backups` の `39550057024-1/` へDB/config 9ファイル・実ファイル539件（446,601,138bytes）とmanifestを保存・全件read-back照合済み。これはオンライン取得で、最終切替用の書込み停止スナップショットではない。
-- PR #59をCI成功後mainへ反映。復元前点検 run `39552283030` が成功。9ファイルのmanifest整合性を再確認。50ユーザー、50 identities、9校、584レコード、2 MFA factors、539 Storage objects、12 migration history recordsを確認。
-- PR #60に東京側限定の初回復元処理を準備。DB全体を単一トランザクションで復元し、公開/Auth inventoryの不一致時はロールバック。ファイル本体・表示用メタデータと所有者を別途照合。まだ実行前。
-- `MIGRATION_TARGET_S3_SECRET_ACCESS_KEY` はコピー開始で有効性を確認。S3キーの再発行・再入力は不要。無関係なDB/利用者パスワードを再設定しない。
-- 認証Rate Limitsは利用者が保存済み。東京側のtoken refreshes/sign-ups and sign-insは両方3000で旧本番と一致。保存後の値とSave changes無効を確認。再設定不要。
-- Confirm sign up、Magic link/OTP、Reauthenticationは件名と本文一致。Invite userとChange emailは本文一致、件名はUIの伏字により未照合。
+| 項目 | 検証結果 |
+| --- | --- |
+| 非公開初回バックアップ | run `39550057024` 成功。prefix `39550057024-1/`、DB/config 9ファイルと実ファイル539件をread-back照合 |
+| 初回DB/Storage復元 | run `39553210850` 成功。50アカウント、9校、584レコード、MFA2件、539ファイル（446,601,138 bytes） |
+| DB同一性 | 9業務表全体、UUID/パスワードハッシュ、identities、発行済み学校/ログインID、MFA、所有者情報が一致 |
+| スキーマ | 18ポリシー・36制約・既存27関数定義が一致。東京標準の `rls_auto_enable` は維持 |
+| 実動作試験 | run `39554835759` 成功。3使い捨てユーザーのログイン/role、学校間アクセス制限、7MB超TUSアップロード/read-back、所有権、非公開backup拒否、学生の管理操作拒否、認証付きAI設定 |
+| 検証後の後始末 | 試験ユーザー・学校・レコード・ファイルを削除し、元inventory一致を確認 |
+| 最終書込み停止 | 旧本番の40業務/Auth/Storage表にstatement triggerを設置。3schemaでUPDATE拒否を実確認。プラットフォーム履歴/未使用Vector表は対象外 |
+| 最終バックアップ | run `39555003848` 成功。prefix `39555003848-1/`。停止後のDB/認証/MFA/owner/policy一致と全539ファイルの両環境SHA256を再確認 |
+| 本番切替 | PR #64、merge commit `80385c9501d6f2fe2589ee8f1f52bb2ef1fdbaf3` |
+| 配備 | Vercel `dpl_9Eb7FoQ6nnh7qURrmuLGBwUV4Hkv`、production/READY、上記commit、本番カスタムドメインのalias反映確認 |
+| 公開URL | HTTP 200、画面表示確認。配信JSに東京URL、CSPに東京HTTPS/Storage/WSS、旧本番ref除去、試験ref維持を実確認 |
+| 通常Storageバックアップ | 東京をsourceにrun `39555678673` 実行中。結果は追記する |
 
-以下は準備時点の記録を保持している。未登録・未接続という過去の記述より、上記の最新結果を優先する。
+Auth設定、SMTP、セッション、Rate Limits、メールテンプレートは移行前記録に従って移設した。
+ID再発行、パスワード変更、MFA解除は行っていない。プロジェクト切替後は再ログインが必要。
+AIは認証付き設定確認までで、有料の実生成はこの移行試験に含めていない。
+既存の認証器による実ユーザーMFA入力、メールの実受信、実ユーザーの全画面操作は未実施。
+
+### 復旧時の注意
+
+- 旧本番は書込み停止中。通常利用では本番サイトを再読み込みし、東京へ再ログインする。
+- 東京に本番書込みが発生した後は、旧デプロイへの単純なrollbackをしない。まず東京の書込み停止、差分保全、再同期が必要。
+- 切替前の停止解除用 `scripts/tokyo-source-unfreeze.sql` は当方のtrigger関数をno-opに戻す。切替後は差分再同期前に実行しない。
+- 最終snapshotのschemaには旧環境だけの書込み停止関数/triggerが含まれる。稼働する東京へそのまま復元しない。
+- 初回復元workflowは空DB専用。稼働中DBへ再実行しない。
+- 通常backupは東京固定endpointと `MIGRATION_TARGET_S3_*` を使用。旧 `PROD_S3_*` は復旧用に保持し、試験 `TEST_S3_*` は維持。
+- Supabaseの東京指定は、Vercel/CDN/ログ等を含む全通信・全データの日本国内限定を意味しない。
+
+## 以下は移行準備時点の履歴
+
+現在の状態は上記を優先し、以下の「未実施」「シンガポール本番」等は当時の記録として読む。
 
 ## 準備時点の状態
 
