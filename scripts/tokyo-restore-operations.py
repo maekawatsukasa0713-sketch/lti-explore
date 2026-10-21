@@ -33,7 +33,7 @@ def target_psql(backup, directory, env, files):
         # SQLSTATE only; SQL contexts can contain passwords or personal records.
         found = re.search(r'(?:ERROR|FATAL):\s+([0-9A-Z]{5}):', result.stderr)
         code = found.group(1) if found else 'unavailable'
-        location = re.search(r'psql:/restore/([a-z_]+\\.sql):([0-9]+):', result.stderr)
+        location = re.search(r'psql:/restore/([a-z_]+\.sql):([0-9]+):', result.stderr)
         location_text = ('; file='+location.group(1)+'; line='+location.group(2)) if location else ''
         reasons = [name for name,pattern in {
             'role-grant': r'permission denied to grant role',
