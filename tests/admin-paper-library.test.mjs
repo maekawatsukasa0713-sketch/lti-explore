@@ -136,7 +136,7 @@ const cloudSourceForEnv=readFileSync(new URL('../cloud.tsx',import.meta.url),'ut
  assert.match(appSource,/先生からの添付資料/);
  assert.match(appSource,/Supabase Storageに保存され、アプリ更新では消えません/);
  assert.match(configSource,/bvjjnzhhxieyxkeorurb/);
- assert.match(configSource,/ozmulwqzybhiekmolvyk/);
+ assert.match(configSource,/qzowxrmrxyjifoabjryr/);
  assert.match(configSource,/APP_ENV: 'production' \| 'staging'/);
  assert.match(configSource,/PROD_HOSTS/);
  assert.match(cloudSourceForEnv,/STAGING \/ 試験環境/);
