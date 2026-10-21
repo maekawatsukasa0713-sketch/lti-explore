@@ -16,9 +16,9 @@ DO $$ DECLARE t record; BEGIN
   FOR t IN SELECT n.nspname,c.relname FROM pg_class c
     JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname IN ('public','auth','storage') AND c.relkind IN ('r','p')
+      AND (n.nspname,c.relname) NOT IN (('auth','schema_migrations'),('storage','migrations'),('storage','buckets_vectors'),('storage','vector_indexes'))
     ORDER BY n.nspname,c.relname
   LOOP
     EXECUTE format('CREATE TRIGGER lti_migration_write_freeze BEFORE INSERT OR UPDATE OR DELETE OR TRUNCATE ON %I.%I FOR EACH STATEMENT EXECUTE FUNCTION lti_migration_control.reject_writes()',t.nspname,t.relname);
-    EXECUTE format('ALTER TABLE %I.%I ENABLE ALWAYS TRIGGER lti_migration_write_freeze',t.nspname,t.relname);
   END LOOP;
 END; $$;
