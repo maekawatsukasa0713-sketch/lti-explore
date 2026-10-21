@@ -1,0 +1,32 @@
+name: Tokyo functional checks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tokyo-migration
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'maekawatsukasa0713-sketch/lti-explore' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install pinned official tools without credentials
+        run: |
+          npm install --prefix "$RUNNER_TEMP/lti-migration-cli" --no-audit --no-fund supabase@2.121.0
+          python3 -m venv "$RUNNER_TEMP/lti-backup-python"
+          "$RUNNER_TEMP/lti-backup-python/bin/pip" install --quiet boto3==1.40.0 botocore==1.40.0 s3transfer==0.13.1 jmespath==1.0.1 python-dateutil==2.9.0.post0 six==1.17.0 urllib3==2.5.0
+          docker pull postgres:17.6-bookworm
+      - name: Verify Tokyo using disposable test accounts
+        env:
+          MIGRATION_SOURCE_DB_PASSWORD: ${{ secrets.MIGRATION_SOURCE_DB_PASSWORD }}
+          MIGRATION_TARGET_DB_PASSWORD: ${{ secrets.MIGRATION_TARGET_DB_PASSWORD }}
+        run: '"$RUNNER_TEMP/lti-backup-python/bin/python" scripts/tokyo-functional-check.py'
+      - name: Remove sensitive temporary files
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP"/lti-tokyo-check-*
+      # No public artifacts, source mutations, or production cutover.
