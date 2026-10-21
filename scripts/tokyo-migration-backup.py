@@ -27,6 +27,31 @@ preflight = module('preflight', 'tokyo-migration-preflight.py')
 storage = module('storage_backup', 'backup-storage.py')
 BUCKET = 'lti-migration-backups'
 SOURCE_BUCKET = 'lti-documents'
+STAGE = 'startup'
+
+
+def checkpoint(stage):
+    global STAGE
+    STAGE = stage
+    print(f'Backup stage: {stage}', flush=True)
+
+
+def safe_failure(error):
+    # Do not include exception messages, request IDs, paths, URLs or response bodies.
+    allowed_types = {'ClientError', 'KeyError', 'TypeError', 'ValueError', 'JSONDecodeError',
+                     'EndpointConnectionError', 'ConnectTimeoutError', 'ReadTimeoutError'}
+    kind = type(error).__name__
+    kind = kind if kind in allowed_types else 'OtherError'
+    code = 'unavailable'
+    response = getattr(error, 'response', None)
+    if isinstance(response, dict):
+        candidate = response.get('Error', {}).get('Code')
+        allowed_codes = {'AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch',
+                         'InvalidRequest', 'InvalidArgument', 'NotImplemented', 'NoSuchBucket',
+                         'BucketAlreadyExists', 'BucketAlreadyOwnedByYou', 'InternalError'}
+        if candidate in allowed_codes:
+            code = candidate
+    return f'stage={STAGE}; kind={kind}; code={code}'
 
 
 def require(condition, stage):
@@ -82,12 +107,16 @@ def perform(cli, directory, env, passwords, source, target, prefix):
     # Reuse the audited read-only/empty-target guards before any write.
     preflight.connection_inventory('source', passwords[0], directory, env)
     preflight.connection_inventory('target', passwords[1], directory, env)
+    checkpoint('source-storage-list')
     initial = objects(source)
+    checkpoint('source-inventory')
     inventories = {}
     for filename in ('migration-inventory.sql', 'migration-auth-inventory.sql'):
         inventories[filename] = sql('source', directory, env, Path(__file__).with_name(filename).read_text())
     # The official CLI produces only private temporary files; it never restores.
+    checkpoint('database-dump')
     preflight.perform(cli, directory, passwords[0], passwords[1], env)
+    checkpoint('migration-history-dump')
     source_url = preflight.connection_url('source', passwords[0])
     for filename, flags in (('history_schema.sql', []), ('history_data.sql', ['--data-only', '--use-copy'])):
         path = directory / filename
@@ -96,6 +125,7 @@ def perform(cli, directory, env, passwords, source, target, prefix):
                               '--schema', 'supabase_migrations', '-f', str(path), *flags],
                               cwd=directory, env=env)
         require(path.stat().st_size > 0, 'migration-history-empty')
+    checkpoint('managed-customizations')
     custom = sql('source', directory, env, """SELECT jsonb_build_object(
       'policies', (SELECT jsonb_agg(to_jsonb(p)) FROM pg_policies p WHERE schemaname IN ('public','auth','storage')),
       'custom_triggers', (SELECT jsonb_agg(pg_get_triggerdef(t.oid)) FROM pg_trigger t
@@ -105,24 +135,29 @@ def perform(cli, directory, env, passwords, source, target, prefix):
       'publications', (SELECT jsonb_agg(to_jsonb(p)) FROM pg_publication_tables p),
       'extensions', (SELECT jsonb_agg(extname) FROM pg_extension));""")
     (directory / 'managed-customizations.json').write_text(custom)
+    checkpoint('source-stability-check')
     for filename, before in inventories.items():
         after = sql('source', directory, env, Path(__file__).with_name(filename).read_text())
         require(json.loads(before) == json.loads(after), 'source-changed-during-dump')
         (directory / (filename + '.json')).write_text(before)
     # Capture metadata separately; never print its personal identifiers or paths.
+    checkpoint('storage-metadata')
     metadata = sql('source', directory, env, "SELECT json_build_object('buckets', (SELECT json_agg(b) FROM storage.buckets b), 'objects', (SELECT json_agg(o) FROM storage.objects o));")
     (directory / 'storage-metadata.json').write_text(metadata)
     meta = json.loads(metadata)
     require(len(meta['objects']) == len(initial), 'storage-inventory-count')
     require({o['name']: int(o['metadata']['size']) for o in meta['objects'] if o['bucket_id'] == SOURCE_BUCKET}
             == {key: value[0] for key, value in initial.items()}, 'storage-inventory-path-size')
+    checkpoint('target-create-private-bucket')
     target.create_bucket(Bucket=BUCKET)
     private_bucket_guard(directory, env)
+    checkpoint('upload-database-backup')
     manifest = {'kind': 'online-backup-not-final-cutover-snapshot', 'files': [], 'objects': []}
     for filename in ('roles.sql', 'schema.sql', 'data.sql', 'history_schema.sql', 'history_data.sql',
                      'managed-customizations.json', 'storage-metadata.json',
                      'migration-inventory.sql.json', 'migration-auth-inventory.sql.json'):
         manifest['files'].append(upload_verified(target, prefix, filename, directory / filename))
+    checkpoint('copy-storage-objects')
     total = 0
     for index, (key, expected) in enumerate(initial.items(), 1):
         with tempfile.TemporaryFile(dir=directory) as tmp:
@@ -185,8 +220,8 @@ def main():
     except preflight.PreflightError as exc:
         print(f'Private Tokyo backup: FAIL ({exc}). Raw diagnostics suppressed.', flush=True)
         return 1
-    except Exception:
-        print('Private Tokyo backup: FAIL (backup-operation). Raw diagnostics suppressed.', flush=True)
+    except Exception as error:
+        print(f'Private Tokyo backup: FAIL ({safe_failure(error)}). Raw diagnostics suppressed.', flush=True)
         return 1
     finally:
         if directory is not None:
