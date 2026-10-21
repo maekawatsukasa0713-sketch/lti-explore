@@ -1,6 +1,48 @@
-# 本番の東京移行準備（2026-10-21）
+# 本番の東京移行（2026-10-21）
 
-## 現在の状態
+## 現在の状態（2026-10-21 06:36 UTC）
+
+**本番は東京へ切替済み。** https://explore.labtoimpact.com/ は `qzowxrmrxyjifoabjryr`（ap-northeast-1）へ接続する。
+旧シンガポール `ozmulwqzybhiekmolvyk` は削除・停止せず、書込み停止状態で復旧用に保持する。
+試験 `bvjjnzhhxieyxkeorurb` とPreviewの接続先は変更していない。
+
+### 実行結果
+
+| 項目 | 検証結果 |
+| --- | --- |
+| 非公開初回バックアップ | run `39550057024` 成功。prefix `39550057024-1/`、DB/config 9ファイルと実ファイル539件をread-back照合 |
+| 初回DB/Storage復元 | run `39553210850` 成功。50アカウント、9校、584レコード、MFA2件、539ファイル（446,601,138 bytes） |
+| DB同一性 | 9業務表全体、UUID/パスワードハッシュ、identities、発行済み学校/ログインID、MFA、所有者情報が一致 |
+| スキーマ | 18ポリシー・36制約・既存27関数定義が一致。東京標準の `rls_auto_enable` は維持 |
+| 実動作試験 | run `39554835759` 成功。3使い捨てユーザーのログイン/role、学校間アクセス制限、7MB超TUSアップロード/read-back、所有権、非公開backup拒否、学生の管理操作拒否、認証付きAI設定 |
+| 検証後の後始末 | 試験ユーザー・学校・レコード・ファイルを削除し、元inventory一致を確認 |
+| 最終書込み停止 | 旧本番の40業務/Auth/Storage表にstatement triggerを設置。3schemaでUPDATE拒否を実確認。プラットフォーム履歴/未使用Vector表は対象外 |
+| 最終バックアップ | run `39555003848` 成功。prefix `39555003848-1/`。停止後のDB/認証/MFA/owner/policy一致と全539ファイルの両環境SHA256を再確認 |
+| 本番切替 | PR #64、merge commit `80385c9501d6f2fe2589ee8f1f52bb2ef1fdbaf3` |
+| 配備 | Vercel `dpl_9Eb7FoQ6nnh7qURrmuLGBwUV4Hkv`、production/READY、上記commit、本番カスタムドメインのalias反映確認 |
+| 公開URL | HTTP 200、画面表示確認。配信JSに東京URL、CSPに東京HTTPS/Storage/WSS、旧本番ref除去、試験ref維持を実確認。保存済みレコード内の旧project URLは0件 |
+| 通常Storageバックアップ | 東京をsourceにrun `39555678673` 成功。既存539件・446,601,138 bytesを照合、copied=0・failed=0 |
+
+Auth設定、SMTP、セッション、Rate Limits、メールテンプレートは移行前記録に従って移設した。
+ID再発行、パスワード変更、MFA解除は行っていない。プロジェクト切替後は再ログインが必要。
+AIは認証付き設定確認までで、有料の実生成はこの移行試験に含めていない。
+既存の認証器による実ユーザーMFA入力、メールの実受信、実ユーザーの全画面操作は未実施。
+
+### 復旧時の注意
+
+- 旧本番は書込み停止中。通常利用では本番サイトを再読み込みし、東京へ再ログインする。
+- 東京に本番書込みが発生した後は、旧デプロイへの単純なrollbackをしない。まず東京の書込み停止、差分保全、再同期が必要。
+- 切替前の停止解除用 `scripts/tokyo-source-unfreeze.sql` は当方のtrigger関数をno-opに戻す。切替後は差分再同期前に実行しない。
+- 最終snapshotのschemaには旧環境だけの書込み停止関数/triggerが含まれる。稼働する東京へそのまま復元しない。
+- 初回復元workflowは空DB専用。稼働中DBへ再実行しない。
+- 通常backupは東京固定endpointと `MIGRATION_TARGET_S3_*` を使用。旧 `PROD_S3_*` は復旧用に保持し、試験 `TEST_S3_*` は維持。
+- Supabaseの東京指定は、Vercel/CDN/ログ等を含む全通信・全データの日本国内限定を意味しない。
+
+## 以下は移行準備時点の履歴
+
+現在の状態は上記を優先し、以下の「未実施」「シンガポール本番」等は当時の記録として読む。
+
+## 準備時点の状態
 
 これは移行準備の記録。東京への復元・本番切替・旧環境の停止は未実施。
 本番接続先は `ozmulwqzybhiekmolvyk`（`ap-southeast-1`）のまま。
