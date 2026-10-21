@@ -9,7 +9,8 @@
 ## 環境分離
 
 - 本番URLは https://explore.labtoimpact.com/ 。supabase-config.tsの本番ホスト一覧またはVITE_LTI_ENVの明示指定で接続先を選びます。
-- 本番サイトは本番 Supabase `ozmulwqzybhiekmolvyk` を利用します。
+- 本番サイトは東京（ap-northeast-1）の Supabase `qzowxrmrxyjifoabjryr` を利用します。
+- 旧本番 `ozmulwqzybhiekmolvyk`（シンガポール）は復旧用に保持します。東京で新規書込み後に旧環境へ戻す場合は、差分保全・再同期が必要です。
 - Vercel Preview、`staging` ブランチ、localhost は、VITE_LTI_ENVの上書きがない場合、試験 Supabase `bvjjnzhhxieyxkeorurb` を利用します。
 - 試験環境では画面上部に **STAGING / 試験環境** バナーを表示します。
 - Previewの環境変数を変更するときは、本番接続を明示するVITE_LTI_ENV=productionが入っていないことも確認します。
@@ -30,8 +31,9 @@ StorageはGitHub Actions `.github/workflows/storage-backup.yml` を手動実行�
 
 ### GitHub Secrets に一度だけ登録する値
 
-- `PROD_S3_ACCESS_KEY_ID`
-- `PROD_S3_SECRET_ACCESS_KEY`
+- `MIGRATION_TARGET_S3_ACCESS_KEY_ID`（現在の東京本番）
+- `MIGRATION_TARGET_S3_SECRET_ACCESS_KEY`（現在の東京本番）
+- 旧 `PROD_S3_*` は移行元の復旧用に保持。通常のStorageバックアップは使用しません。
 - `TEST_S3_ACCESS_KEY_ID`
 - `TEST_S3_SECRET_ACCESS_KEY`
 
