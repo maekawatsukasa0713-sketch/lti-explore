@@ -33,7 +33,24 @@ def target_psql(backup, directory, env, files):
         # SQLSTATE only; SQL contexts can contain passwords or personal records.
         found = re.search(r'(?:ERROR|FATAL):\s+([0-9A-Z]{5}):', result.stderr)
         code = found.group(1) if found else 'unavailable'
-        print('Target restore transaction: FAIL; sqlstate='+code, flush=True)
+        location = re.search(r'psql:/restore/([a-z_]+\.sql):([0-9]+):', result.stderr)
+        location_text = ('; file='+location.group(1)+'; line='+location.group(2)) if location else ''
+        reasons = [name for name,pattern in {
+            'role-grant': r'permission denied to grant role',
+            'schema-permission': r'permission denied for schema',
+            'table-permission': r'permission denied for (?:table|relation)',
+            'function-permission': r'permission denied for function',
+            'must-own': r'must be owner of',
+            'role-membership': r'must be (?:a )?member of role|must be able to SET ROLE',
+            'superuser': r'must be superuser|Only superusers',
+            'role-create': r'permission denied to create role',
+            'role-alter': r'permission denied to alter role',
+            'parameter': r'permission denied to set parameter',
+        }.items() if re.search(pattern,result.stderr,re.I)]
+        denied = re.search(r'(?:permission denied for|must be owner of) (?:schema|table|relation|function|sequence) "?([a-z_][a-z_0-9]*)"?', result.stderr)
+        role = re.search(r'(?:grant role|member of role|SET ROLE|alter role|create role) "([a-z_][a-z_0-9]*)"', result.stderr)
+        details = ('; object='+denied.group(1) if denied else '')+('; role='+role.group(1) if role else '')
+        print('Target restore transaction: FAIL; sqlstate='+code+location_text+'; reasons='+','.join(reasons)+details, flush=True)
         raise backup.preflight.PreflightError('target-restore-transaction')
     print('Target restore transaction: PASS', flush=True)
 
