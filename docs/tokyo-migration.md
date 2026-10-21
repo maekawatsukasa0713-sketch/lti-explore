@@ -1,6 +1,6 @@
 # 本番の東京移行（2026-10-21）
 
-## 現在の状態（2026-10-21 06:30 UTC）
+## 現在の状態（2026-10-21 06:36 UTC）
 
 **本番は東京へ切替済み。** https://explore.labtoimpact.com/ は `qzowxrmrxyjifoabjryr`（ap-northeast-1）へ接続する。
 旧シンガポール `ozmulwqzybhiekmolvyk` は削除・停止せず、書込み停止状態で復旧用に保持する。
@@ -20,8 +20,8 @@
 | 最終バックアップ | run `39555003848` 成功。prefix `39555003848-1/`。停止後のDB/認証/MFA/owner/policy一致と全539ファイルの両環境SHA256を再確認 |
 | 本番切替 | PR #64、merge commit `80385c9501d6f2fe2589ee8f1f52bb2ef1fdbaf3` |
 | 配備 | Vercel `dpl_9Eb7FoQ6nnh7qURrmuLGBwUV4Hkv`、production/READY、上記commit、本番カスタムドメインのalias反映確認 |
-| 公開URL | HTTP 200、画面表示確認。配信JSに東京URL、CSPに東京HTTPS/Storage/WSS、旧本番ref除去、試験ref維持を実確認 |
-| 通常Storageバックアップ | 東京をsourceにrun `39555678673` 実行中。結果は追記する |
+| 公開URL | HTTP 200、画面表示確認。配信JSに東京URL、CSPに東京HTTPS/Storage/WSS、旧本番ref除去、試験ref維持を実確認。保存済みレコード内の旧project URLは0件 |
+| 通常Storageバックアップ | 東京をsourceにrun `39555678673` 成功。既存539件・446,601,138 bytesを照合、copied=0・failed=0 |
 
 Auth設定、SMTP、セッション、Rate Limits、メールテンプレートは移行前記録に従って移設した。
 ID再発行、パスワード変更、MFA解除は行っていない。プロジェクト切替後は再ログインが必要。
