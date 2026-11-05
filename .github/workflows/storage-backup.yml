@@ -1,20 +1,34 @@
 name: Backup production Storage
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/storage-backup.yml'
+      - 'scripts/backup-storage.py'
+  schedule:
+    # Daily at 03:30 Asia/Tokyo. GitHub schedules may start later under load.
+    - cron: '30 18 * * *'
 permissions:
   contents: read
 concurrency:
-  group: production-storage-backup
+  group: production-storage-recovery
   cancel-in-progress: false
 jobs:
   backup:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'maekawatsukasa0713-sketch/lti-explore' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      snapshot_id: ${{ steps.snapshot.outputs.snapshot_id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Test immutable snapshots and restore guards
+        run: |
+          python tests/storage-backup.test.py
+          python tests/storage-restore.test.py
       - name: Check backup credentials
         env:
           PROD_ACCESS_KEY_ID: ${{ secrets.MIGRATION_TARGET_S3_ACCESS_KEY_ID }}
@@ -27,9 +41,10 @@ jobs:
             echo "::error::Storage backup secrets are not configured. Nothing copied."
             exit 1
           fi
-      - name: Install boto3
-        run: python -m pip install --quiet boto3
-      - name: Copy and verify production objects
+      - name: Install pinned backup dependency
+        run: python -m pip install --quiet boto3==1.43.110
+      - name: Create and verify a complete Storage snapshot
+        id: snapshot
         env:
           PROD_ACCESS_KEY_ID: ${{ secrets.MIGRATION_TARGET_S3_ACCESS_KEY_ID }}
           PROD_SECRET_ACCESS_KEY: ${{ secrets.MIGRATION_TARGET_S3_SECRET_ACCESS_KEY }}
@@ -41,4 +56,61 @@ jobs:
           BACKUP_BUCKET: lti-production-backup
           PROD_AWS_REGION: ap-northeast-1
           TEST_AWS_REGION: ap-southeast-1
-        run: python scripts/backup-storage.py
+          BACKUP_SNAPSHOT_ID: github-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python scripts/backup-storage.py
+          echo "snapshot_id=$BACKUP_SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
+      - name: Record completed snapshot
+        if: success()
+        env:
+          SNAPSHOT_ID: github-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          {
+            echo '## Storage backup completed'
+            echo "Snapshot: \`$SNAPSHOT_ID\`"
+            echo 'Original production files and older backup generations were not changed.'
+            echo 'Use this snapshot ID in the private Storage restore workflow for an isolated restore check.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Report backup failure
+        if: failure()
+        run: |
+          echo '::error title=Storage backup failed::No successful backup is claimed for this run. Inspect the failed step; earlier complete snapshots are retained.'
+          {
+            echo '## Storage backup failed'
+            echo 'Do not use this run as a completed recovery point. Earlier complete snapshots remain available.'
+            echo 'Inspect the failed step and rerun after resolving it. A rerun uses a new snapshot ID.'
+            echo 'GitHub Actions failure email/web delivery depends on the operator notification settings; see docs/storage-snapshots.md.'
+          } >> "$GITHUB_STEP_SUMMARY"
+  verify-new-backup-code:
+    needs: backup
+    # Verify changed backup code end to end once after release, not on every daily run.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned restore dependencies
+        run: python -m pip install --quiet boto3==1.43.110 PyMuPDF==1.28.2
+      - name: Verify the new snapshot in a disposable private staging bucket
+        env:
+          TEST_ACCESS_KEY_ID: ${{ secrets.TEST_S3_ACCESS_KEY_ID }}
+          TEST_SECRET_ACCESS_KEY: ${{ secrets.TEST_S3_SECRET_ACCESS_KEY }}
+          RESTORE_SNAPSHOT_ID: ${{ needs.backup.outputs.snapshot_id }}
+        run: |
+          if [ -z "$RESTORE_SNAPSHOT_ID" ]; then
+            echo '::error::The new snapshot ID is missing; refusing a legacy-backup fallback.'
+            exit 1
+          fi
+          python scripts/restore-storage-test.py
+      - name: Record restore verification
+        if: success()
+        run: |
+          echo '## New snapshot restored, content verified, and disposable copies cleaned up' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Original production files and backup generations were not changed.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Report restore verification failure
+        if: failure()
+        run: |
+          echo '::error title=Storage restore verification failed::The snapshot backup completed, but its isolated restore check did not complete. Inspect this job before relying on this recovery point.'
+          echo '## Restore verification failed: inspect verification and cleanup results in this job' >> "$GITHUB_STEP_SUMMARY"

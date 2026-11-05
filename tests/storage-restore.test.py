@@ -2,6 +2,7 @@
 from contextlib import redirect_stdout
 import hashlib
 import importlib.util
+import json
 from io import BytesIO, StringIO
 from pathlib import Path
 import tempfile
@@ -12,6 +13,10 @@ spec = importlib.util.spec_from_file_location('restore_storage', Path(__file__).
 restore = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(restore)
 TARGET = restore.target_name('123456', '1')
+
+
+class Missing(Exception):
+    response = {'Error': {'Code': 'NoSuchKey'}, 'ResponseMetadata': {'HTTPStatusCode': 404}}
 
 
 class Paginator:
@@ -34,6 +39,7 @@ class Client:
         self.drop_metadata = False
         self.change_source = False
         self.cleanup_error = False
+        self.allow_backup_writes = False
 
     @staticmethod
     def etag(data):
@@ -45,6 +51,11 @@ class Client:
     def list_buckets(self):
         return {'Buckets': [{'Name': b} for b in self.buckets]}
 
+    def head_bucket(self, Bucket):
+        if Bucket not in self.buckets:
+            raise Missing()
+        return {}
+
     def create_bucket(self, Bucket):
         self.writes.append(('create', Bucket))
         assert Bucket == TARGET
@@ -52,6 +63,8 @@ class Client:
         self.buckets[Bucket] = {}
 
     def get_object(self, Bucket, Key):
+        if Key not in self.buckets[Bucket]:
+            raise Missing()
         v = self.buckets[Bucket][Key]
         return {**{k: value for k, value in v.items() if k != 'data'},
                 'Body': BytesIO(v['data']), 'ContentLength': len(v['data']), 'ETag': self.etag(v['data'])}
@@ -64,7 +77,7 @@ class Client:
         return value
 
     def upload_fileobj(self, source, Bucket, Key, ExtraArgs):
-        assert Bucket == TARGET
+        assert Bucket == TARGET or (self.allow_backup_writes and Bucket == restore.BACKUP_BUCKET)
         self.writes.append(('upload', Bucket))
         data = source.read()
         if self.corrupt:
@@ -94,9 +107,9 @@ def fake_viewer(path, key, content_type):
 
 
 class RestoreTests(unittest.TestCase):
-    def run_restore(self, client, count=2, viewer=fake_viewer, probe=lambda *_: True):
+    def run_restore(self, client, count=2, viewer=fake_viewer, probe=lambda *_: True, snapshot_id=None):
         with redirect_stdout(StringIO()) as log:
-            result = restore.restore(client, TARGET, count, viewer=viewer, access_probe=probe)
+            result = restore.restore(client, TARGET, count, viewer=viewer, access_probe=probe, snapshot_id=snapshot_id)
         self.assertNotIn('private-owner', log.getvalue())
         return result
 
@@ -218,13 +231,112 @@ class RestoreTests(unittest.TestCase):
         self.assertEqual(client.writes, [])
 
     def test_word_document_structure_is_opened_without_extraction(self):
-        with tempfile.NamedTemporaryFile() as tmp:
-            with ZipFile(tmp, 'w') as doc:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path=Path(temp_dir)/'fixture.docx'
+            with ZipFile(path, 'w') as doc:
                 doc.writestr('[Content_Types].xml', '<Types/>')
                 doc.writestr('word/document.xml', '<document/>')
-            tmp.flush()
-            result = restore.open_document(tmp.name, 'sample.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            result = restore.open_document(path, 'sample.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         self.assertEqual(result['kind'], 'docx')
+
+    def make_snapshot(self, client, snapshot_id='github-987-1', source=None):
+        if source is not None:
+            client.buckets['snapshot-source'] = source
+        elif 'snapshot-source' not in client.buckets:
+            client.buckets['snapshot-source'] = {key: dict(value) for key,value in client.buckets[restore.BACKUP_BUCKET].items()}
+        client.allow_backup_writes = True
+        try:
+            with redirect_stdout(StringIO()):
+                result=restore.backup_module.backup(client,client,'snapshot-source',restore.BACKUP_BUCKET,snapshot_id)
+            self.assertTrue(result['completed'],result)
+        finally:
+            client.allow_backup_writes = False
+        client.writes.clear()
+        return snapshot_id
+
+    def test_selected_snapshot_restores_original_names_content_and_metadata(self):
+        client=Client()
+        source={'private-owner/one.pdf':{'data':b'old-good','ContentType':'application/pdf','ContentDisposition':'inline','Metadata':{'version':'old'}},
+                'private-owner/two.docx':{'data':b'old-word','ContentType':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}}
+        old=self.make_snapshot(client,source=source)
+        self.make_snapshot(client,'github-987-2',{'private-owner/one.pdf':{'data':b'new-bad!','ContentType':'application/pdf'}})
+        before=restore.snapshot(client,restore.BACKUP_BUCKET)
+        seen={}
+        def viewer(path,key,content_type):
+            seen[key]=Path(path).read_bytes()
+            return fake_viewer(path,key,content_type)
+        result=self.run_restore(client,count=None,snapshot_id=old,viewer=viewer)
+        self.assertEqual(result['expected'],2)
+        self.assertEqual((result['restored'],result['failed']),(2,0))
+        self.assertEqual(seen,{'private-owner/one.pdf':b'old-good','private-owner/two.docx':b'old-word'})
+        self.assertEqual(restore.snapshot(client,restore.BACKUP_BUCKET),before)
+        self.assertTrue(result['backup_unchanged'] and result['cleanup_success'])
+        self.assertTrue(all(bucket==TARGET for _,bucket in client.writes))
+
+    def test_legacy_restore_ignores_snapshot_internal_objects(self):
+        client=Client();self.make_snapshot(client)
+        self.assertGreater(len(restore.snapshot(client,restore.BACKUP_BUCKET)),2)
+        result=self.run_restore(client)
+        self.assertEqual((result['restored'],result['failed']),(2,0))
+
+    def test_partial_snapshot_is_rejected_before_creating_destination(self):
+        client=Client();snapshot_id=self.make_snapshot(client)
+        _,marker=restore.backup_module.snapshot_keys(snapshot_id)
+        client.buckets[restore.BACKUP_BUCKET].pop(marker)
+        with self.assertRaises(Missing):self.run_restore(client,count=None,snapshot_id=snapshot_id)
+        self.assertEqual(client.writes,[])
+
+    def test_manifest_corruption_is_rejected_before_any_restore(self):
+        client=Client();snapshot_id=self.make_snapshot(client)
+        manifest,_=restore.backup_module.snapshot_keys(snapshot_id)
+        client.buckets[restore.BACKUP_BUCKET][manifest]['data']+=b' '
+        with self.assertRaisesRegex(ValueError,'checksum'):self.run_restore(client,count=None,snapshot_id=snapshot_id)
+        self.assertEqual(client.writes,[])
+
+    def test_wrong_selected_count_is_rejected_before_any_write(self):
+        client=Client();snapshot_id=self.make_snapshot(client)
+        with self.assertRaises(ValueError):self.run_restore(client,count=3,snapshot_id=snapshot_id)
+        self.assertEqual(client.writes,[])
+
+    def test_tampered_blob_is_rejected_before_bulk_restore_and_keeps_backups(self):
+        client=Client();snapshot_id=self.make_snapshot(client)
+        plan=restore.restore_plan(client,snapshot_id)
+        blob=plan[0]['source_key'];client.buckets[restore.BACKUP_BUCKET][blob]['data']=b'x'*plan[0]['size']
+        before=restore.snapshot(client,restore.BACKUP_BUCKET)
+        result=self.run_restore(client,count=None,snapshot_id=snapshot_id)
+        self.assertGreater(result['failed'],0);self.assertEqual(result['restored'],0)
+        self.assertTrue(result['cleanup_success']);self.assertEqual(restore.snapshot(client,restore.BACKUP_BUCKET),before)
+
+    def test_selected_snapshot_cleanup_recovery_verifies_hashes(self):
+        client=Client();snapshot_id=self.make_snapshot(client)
+        plan=restore.restore_plan(client,snapshot_id)
+        client.buckets[TARGET]={row['key']:{'data':client.buckets[restore.BACKUP_BUCKET][row['source_key']]['data'],**row['metadata']} for row in plan}
+        with redirect_stdout(StringIO()):result=restore.cleanup_previous_run(client,TARGET,snapshot_id=snapshot_id)
+        self.assertTrue(result['cleanup_success'] and result['backup_unchanged'])
+        self.assertNotIn(TARGET,client.buckets)
+
+    def test_recovery_refuses_same_names_and_sizes_with_different_bytes(self):
+        for use_snapshot in (False,True):
+            client=Client();snapshot_id=self.make_snapshot(client) if use_snapshot else None
+            plan=restore.restore_plan(client,snapshot_id)
+            client.buckets[TARGET]={row['key']:{'data':b'x'*row['size']} for row in plan}
+            with self.assertRaisesRegex(ValueError,'content differs'):
+                restore.cleanup_previous_run(client,TARGET,2,snapshot_id=snapshot_id)
+            self.assertEqual(client.writes,[])
+
+    def test_selected_snapshot_cannot_redirect_restore_source_to_legacy_object(self):
+        client=Client();snapshot_id=self.make_snapshot(client)
+        manifest_key,marker_key=restore.backup_module.snapshot_keys(snapshot_id)
+        manifest=json.loads(client.buckets[restore.BACKUP_BUCKET][manifest_key]['data'])
+        manifest['objects'][0]['object_key']='private-owner/one.pdf'
+        raw=restore.backup_module.json_bytes(manifest)
+        client.buckets[restore.BACKUP_BUCKET][manifest_key]['data']=raw
+        marker=json.loads(client.buckets[restore.BACKUP_BUCKET][marker_key]['data'])
+        marker['manifest_sha256']=hashlib.sha256(raw).hexdigest()
+        client.buckets[restore.BACKUP_BUCKET][marker_key]['data']=restore.backup_module.json_bytes(marker)
+        with self.assertRaisesRegex(ValueError,'content reference'):
+            self.run_restore(client,count=None,snapshot_id=snapshot_id)
+        self.assertEqual(client.writes,[])
 
 
 if __name__ == '__main__':
