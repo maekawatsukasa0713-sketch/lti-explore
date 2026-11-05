@@ -1,16 +1,16 @@
-import {generateReview,ReviewError,reviewSections} from './review.ts';
+import {generateReview,ReviewError,reviewSections,providerFailure,transientProviderStatus,retryAfterMs} from './review.ts';
 import {claimPaper} from './registration.ts';
 const headers={'Access-Control-Allow-Origin':'https://lti-explore-lab-to-impact.vercel.app','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, traceparent, tracestate, baggage','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin','Content-Type':'application/json','Cache-Control':'no-store'};
 const reply=(data:unknown,status=200)=>new Response(JSON.stringify(data),{headers,status});
-const transientAnthropicStatuses=new Set([500,502,503,529]);
 export async function fetchAnthropicWithRetry(init:RequestInit,timeoutMs=120000){
  let response:Response|undefined;
  for(let attempt=1;attempt<=3;attempt++){
   response=await fetch('https://api.anthropic.com/v1/messages',{...init,signal:AbortSignal.timeout(timeoutMs)});
-  if(!transientAnthropicStatuses.has(response.status)||attempt===3)return response;
-  console.warn('Claude transient error; retrying',{status:response.status,attempt,requestId:response.headers.get('request-id')});
+  const delay=retryAfterMs(response)??500*Math.pow(2,attempt-1);
+  if(!transientProviderStatus(response.status)||attempt===3||delay>5000)return response;
+  console.warn('Claude transient error; retrying',{status:response.status,attempt});
   try{await response.body?.cancel();}catch{}
-  await new Promise(resolve=>setTimeout(resolve,500*Math.pow(2,attempt-1)));
+  await new Promise(resolve=>setTimeout(resolve,delay));
  }
  return response!;
 }
@@ -76,7 +76,7 @@ Deno.serve(async(req:Request)=>{
   if(Number(req.headers.get('content-length')||0)>12000000)return reply({error:'原稿が大きすぎます。8MB以下にしてください。'},413);
   const raw=await req.text();if(raw.length>12000000)return reply({error:'原稿が大きすぎます。'},413);
   let body;try{body=JSON.parse(raw);}catch{return reply({error:'リクエストを読み取れません。'},400);}
-  const key=Deno.env.get('ANTHROPIC_API_KEY');const model=Deno.env.get('ANTHROPIC_MODEL')||'claude-haiku-4-5-20251001';
+  const key=Deno.env.get('ANTHROPIC_API_KEY')?.trim();const model=Deno.env.get('ANTHROPIC_MODEL')?.trim()||'claude-haiku-4-5-20251001';
   if(body.mode==='status')return reply({configured:!!key});
   if(!['register','review'].includes(body.mode))return reply({error:'解析方法が不正です。'},400);
   if(body.mode==='review'&&!['teacher','admin'].includes(profile.role))return reply({error:'AI添削は教員・運営向けの機能です。'},403);
@@ -107,7 +107,7 @@ Deno.serve(async(req:Request)=>{
        const isRegistration=body.mode==='register';
        const response=await fetchAnthropicWithRetry({method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model,max_tokens:isRegistration?12000:7000,system:system+'\n'+continuationGuidance+(isRegistration?'\n'+registrationGuidance+'\n'+publicationGuidance:''),messages:[{role:'user',content}],tools:[{name:'submit_analysis',description:'研究の要約、提案、添削結果を構造化して返す',...(isRegistration?{strict:true}:{}),input_schema:isRegistration?registrationSchema:schema}],tool_choice:{type:'tool',name:'submit_analysis'}})},120000);
        console.log('Claude request finished',{mode:body.mode,status:response.status,durationMs:Date.now()-aiStartedAt});
-       if(!response.ok){const providerError=(await response.text()).slice(0,2000);console.error('Claude request rejected',{status:response.status,body:providerError});await refundQuota();const providerReason=response.status===400&&/schema is too complex/i.test(providerError)?'anthropic_400_schema_complexity':response.status===400&&/schema|input_schema|structured/i.test(providerError)?'anthropic_400_schema':'anthropic_'+response.status;const message=response.status===429?'AIの利用上限に達しました。時間をおいて再試行してください。':response.status===401?'AI接続キーを確認してください。':response.status===402?'Claude APIの利用残高または支払い設定を確認してください。':response.status===400?'AIへの解析形式をAnthropicが受理できませんでした。LTI運営側で確認します。':'AI提供元に接続できませんでした。';if(registration?.fail)await registration.fail(providerReason);return reply({error:message},response.status===429?429:502);}
+       if(!response.ok){const failure=await providerFailure(response);console.error('Claude request rejected',{code:failure.code,...failure.details});await refundQuota();if(registration?.fail)await registration.fail(failure.code);return reply({error:failure.message,code:failure.code,retryable:failure.retryable,...failure.details},response.status===429?429:502);}
        const payload=await response.json();const candidate=payload.content?.find((c:any)=>c.type==='tool_use'&&c.name==='submit_analysis')?.input;
        const normalized=normalizeRegistrationResult(candidate);const issue=normalized.issue;
        if(payload.stop_reason==='max_tokens'||issue){const reason=payload.stop_reason==='max_tokens'?'max_tokens':`invalid_${issue}`;await refundQuota();console.error('AI structured response incomplete',{reason,stop_reason:payload.stop_reason,output_tokens:payload.usage?.output_tokens,keys:candidate&&typeof candidate==='object'?Object.keys(candidate):[]});if(registration?.fail)await registration.fail(reason);return reply({error:reason==='max_tokens'?'AIの出力が長くなり、回答が途中で切れました。再解析してください。':'AIの回答の必要項目が不足しています。再解析してください。'},502);}
@@ -132,7 +132,7 @@ Deno.serve(async(req:Request)=>{
    if(cache.size>=30)cache.delete(cache.keys().next().value!);cache.set(cacheKey,{time:Date.now(),value});return reply(value);
   }catch(e){
    await refundQuota();
-   if(e instanceof ReviewError){console.warn('Review generation failed',{code:e.code,section:body.section||'all'});return reply({error:e.message,code:e.code,retryable:e.retryable},502);}
+   if(e instanceof ReviewError){console.warn('Review generation failed',{code:e.code,section:body.section||'all',...e.details});return reply({error:e.message,code:e.code,retryable:e.retryable,...e.details},e.details.providerStatus===429?429:502);}
    throw e;
   }
  }catch(e){const timedOut=stage==='anthropic'&&e instanceof Error&&['TimeoutError','AbortError'].includes(e.name);const reason=timedOut?'anthropic_timeout':'request_failed';console.error('Research AI request failed',{stage,reason,name:e instanceof Error?e.name:'unknown',message:e instanceof Error?e.message:'unknown'});await refundQuota();if(registration?.fail)try{await registration.fail(reason);}catch{}return reply({error:timedOut?'AIの応答に時間がかかり、今回の解析を停止しました。原稿は保存されています。もう一度解析してください。':'解析中の通信または保存に失敗しました。原稿は保存されています。再解析してください。'},timedOut?504:502);}

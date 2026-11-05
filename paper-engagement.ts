@@ -3,21 +3,26 @@ import {supabase} from './cloud';
 export type PaperEngagement={views:number;citations:number;bookmarks:number};
 
 const empty:PaperEngagement={views:0,citations:0,bookmarks:0};
-const ids=(paperIds:(number|string)[])=>[...new Set(paperIds.map(String).filter(Boolean))].slice(0,500);
+const ids=(paperIds:(number|string)[])=>[...new Set(paperIds.map(String).filter(Boolean))];
 
 export async function loadPaperEngagement(paperIds:(number|string)[]){
- const paper_ids=ids(paperIds);
- if(!paper_ids.length)return {metrics:{} as Record<string,PaperEngagement>,bookmarked:new Set<string>()};
+ const allIds=ids(paperIds);
+ const metrics:Record<string,PaperEngagement>={};
+ const bookmarked=new Set<string>();
+ // The RPC accepts at most 500 IDs. Read every batch instead of truncating the library.
+ for(let offset=0;offset<allIds.length;offset+=500){
+ const paper_ids=allIds.slice(offset,offset+500);
  const [countResult,bookmarkResult]=await Promise.all([
   supabase.rpc('lti_paper_engagement_counts',{paper_ids}),
   supabase.rpc('lti_my_paper_bookmarks',{paper_ids})
  ]);
  if(countResult.error)throw countResult.error;
  if(bookmarkResult.error)throw bookmarkResult.error;
- const metrics:Record<string,PaperEngagement>={};
  for(const id of paper_ids)metrics[id]={...empty};
  for(const row of countResult.data||[])metrics[String(row.paper_id)]={views:Number(row.views||0),citations:Number(row.citations||0),bookmarks:Number(row.bookmarks||0)};
- return {metrics,bookmarked:new Set<string>((bookmarkResult.data||[]).map((row:any)=>String(row.paper_id)))};
+ for(const row of bookmarkResult.data||[])bookmarked.add(String(row.paper_id));
+ }
+ return {metrics,bookmarked};
 }
 
 export async function togglePaperBookmark(paperId:number|string){

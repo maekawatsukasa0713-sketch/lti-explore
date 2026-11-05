@@ -6,7 +6,19 @@ export function invokeResearchAI(body:Record<string,unknown>&{mode:'review'},sig
 export function invokeResearchAI(body:Record<string,unknown>&{mode:'register'},signal?:AbortSignal):Promise<ResearchAnalysis|ResearchAccepted>;
 export async function invokeResearchAI(body:Record<string,unknown>,signal?:AbortSignal):Promise<ResearchAnalysis|ResearchAccepted>{
  const {data,error}=await supabase.functions.invoke('research-ai',{body,signal:signal||(body.mode==='review'?AbortSignal.timeout(145000):undefined)});
- if(error){let code='connection_failed',retryable=body.mode==='review'&&(error.name==='FunctionsFetchError'||[502,503,504].includes(error.context?.status));let message='AI解析に接続できませんでした。時間をおいて再試行してください。';try{const result=await error.context?.json();message=result?.error||message;code=result?.code||code;retryable=typeof result?.retryable==='boolean'?result.retryable:retryable;}catch{}throw Object.assign(new Error(message),{code,retryable});}
+ if(error){
+  let code=error.context?.status===429?'rate_limited':'connection_failed',retryable=body.mode==='review'&&(error.name==='FunctionsFetchError'||[429,502,503,504].includes(error.context?.status));
+  let message=error.context?.status===429?'AI解析の利用制限です。時間をおいて再試行してください。':'AI解析に接続できませんでした。時間をおいて再試行してください。';
+  let requestId:string|undefined,retryAfterMs:number|undefined;
+  try{const result=await error.context?.json();
+   if(typeof result?.error==='string')message=result.error;
+   if(typeof result?.code==='string'&&/^[a-z0-9_]{1,80}$/.test(result.code))code=result.code;
+   retryable=typeof result?.retryable==='boolean'?result.retryable:retryable;
+   if(typeof result?.requestId==='string'&&/^req[_-][A-Za-z0-9_-]{1,120}$/.test(result.requestId))requestId=result.requestId;
+   if(typeof result?.retryAfterMs==='number'&&Number.isFinite(result.retryAfterMs)&&result.retryAfterMs>=0)retryAfterMs=Math.min(result.retryAfterMs,86400000);
+  }catch{}
+  throw Object.assign(new Error(message),{code,retryable,requestId,retryAfterMs});
+ }
  if(data?.accepted===true&&data?.state==='processing')return data as ResearchAccepted;
  if(!Array.isArray(data?.summary)||!Array.isArray(data?.corrections))throw new Error('AIの回答を読み取れませんでした。再試行してください。');return data;
 }
