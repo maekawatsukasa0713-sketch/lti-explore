@@ -56,21 +56,49 @@ try{
  await assert.rejects(()=>runReview(file,'teacher',prepare,invoke,()=>{}),e=>e===limited);assert.equal(invoked,1);
  now+=2001;assert.deepEqual(await runReview(file,'teacher',prepare,invoke,()=>{}),valid);assert.equal(prepared,1);assert.equal(invoked,2);Date.now=oldNow;
 
- let handler,refunds=0;const logs=[];console.warn=(...args)=>logs.push(args);console.error=(...args)=>logs.push(args);
- globalThis.Deno={env:{get:k=>({SUPABASE_URL:'https://fixture-db',SUPABASE_ANON_KEY:'fixture-anon',SUPABASE_SERVICE_ROLE_KEY:'fixture-server',ANTHROPIC_API_KEY:'  fixture-key\r\n',ANTHROPIC_MODEL:'  fixture-model  '})[k]},serve:fn=>handler=fn};
+ let handler,refunds=0,quotaClaims=0,providerCalls=0,providerKey='fixture-key',providerSucceeds=false;const logs=[];console.warn=(...args)=>logs.push(args);console.error=(...args)=>logs.push(args);
+ const env={SUPABASE_URL:'https://fixture-db',SUPABASE_ANON_KEY:'fixture-anon',SUPABASE_SERVICE_ROLE_KEY:'fixture-server',ANTHROPIC_API_KEY:'  fixture-key\r\n',ANTHROPIC_MODEL:'  fixture-model  '};
+ globalThis.Deno={env:{get:k=>env[k]},serve:fn=>handler=fn};
  await load('edge');
  globalThis.fetch=async(url,init={})=>{
   url=String(url);
   if(url.includes('/auth/v1/user'))return Response.json({id:'fixture-teacher'});
   if(url.includes('lti_profiles'))return Response.json([{role:'teacher',active:true}]);
   if(url.includes('lti_feature_enabled'))return Response.json(true);
-  if(url.includes('lti_claim_ai_quota'))return Response.json(1);
+  if(url.includes('lti_claim_ai_quota')){quotaClaims++;return Response.json(1);}
   if(url.includes('lti_refund_ai_quota')){refunds++;return Response.json(true);}
-  assert.equal(init.headers['x-api-key'],'fixture-key');assert.equal(JSON.parse(init.body).model,'fixture-model');
+  assert.equal(url,'https://api.anthropic.com/v1/messages');providerCalls++;
+  assert.equal(init.headers['x-api-key'],providerKey);assert.equal(init.headers['anthropic-version'],'2023-06-01');assert.equal(JSON.parse(init.body).model,'fixture-model');
+  if(providerSucceeds)return success();
   return Response.json({error:{type:'authentication_error',message:privateText}},{status:401,headers:{'request-id':'req_fixture_auth'}});
  };
  const response=await handler(new Request('https://fixture-edge',{method:'POST',headers:{authorization:'Bearer fixture-user','content-type':'application/json'},body:JSON.stringify({mode:'review',text:'架空のソフトウェアテスト用原稿です。'.repeat(5)})}));
  assert.equal(response.status,502);const errorBody=await response.json();assert.equal(errorBody.code,'anthropic_401');assert.equal(errorBody.requestId,'req_fixture_auth');assert.equal(errorBody.providerType,'authentication_error');assert.equal(errorBody.retryable,false);assert.equal(refunds,1);assert(!JSON.stringify(errorBody).includes(privateText));assert(!JSON.stringify(logs).includes(privateText));
+
+ // Exercise secret selection through the real handler and outgoing provider request.
+ const request=body=>new Request('https://fixture-edge',{method:'POST',headers:{authorization:'Bearer fixture-user','content-type':'application/json'},body:JSON.stringify(body)});
+ providerSucceeds=true;
+ for(const fixture of [
+  {name:'alias beats stale canonical',alias:'  fixture-alias\r\n',canonical:'fixture-stale',expected:'fixture-alias'},
+  {name:'alias alone',alias:'fixture-alias',canonical:undefined,expected:'fixture-alias'},
+  {name:'absent alias falls back',alias:undefined,canonical:'  fixture-canonical\n',expected:'fixture-canonical'},
+  {name:'empty alias falls back',alias:'',canonical:'fixture-canonical',expected:'fixture-canonical'},
+  {name:'whitespace alias falls back',alias:' \r\n ',canonical:' fixture-canonical ',expected:'fixture-canonical'},
+  {name:'both absent',alias:undefined,canonical:undefined,expected:undefined},
+  {name:'both blank',alias:' \n',canonical:' \r\n',expected:undefined},
+ ]){
+  env['tsukasa-api-key']=fixture.alias;env.ANTHROPIC_API_KEY=fixture.canonical;providerKey=fixture.expected;
+  const configured=await handler(request({mode:'status'}));assert.equal(configured.status,200,fixture.name);assert.deepEqual(await configured.json(),{configured:!!fixture.expected},fixture.name);
+  const beforeCalls=providerCalls,beforeQuota=quotaClaims;
+  const selected=await handler(request({mode:'review',text:'架空のソフトウェアテスト用原稿です。'.repeat(5),force:true}));
+  assert.equal(selected.status,fixture.expected?200:503,fixture.name);
+  const selectedBody=await selected.json();
+  if(fixture.expected)assert.deepEqual(selectedBody.corrections,valid.corrections,fixture.name);
+  assert.equal(providerCalls-beforeCalls,fixture.expected?1:0,fixture.name);
+  assert.equal(quotaClaims-beforeQuota,fixture.expected?1:0,fixture.name);
+  assert(!JSON.stringify(selectedBody).includes('fixture-alias'));assert(!JSON.stringify(selectedBody).includes('fixture-canonical'));
+ }
+ assert(!JSON.stringify(logs).includes('fixture-alias'));assert(!JSON.stringify(logs).includes('fixture-canonical'));
 
  globalThis.__testSupabase={functions:{invoke:async()=>({error:{name:'FunctionsHttpError',context:Response.json(errorBody,{status:502})}})}};
  const {invokeResearchAI}=await load('client');
@@ -80,7 +108,7 @@ try{
  globalThis.__testSupabase.functions.invoke=async()=>({error:{name:'FunctionsHttpError',context:new Response('non-JSON rate-limit response',{status:429})}});
  await assert.rejects(()=>invokeResearchAI({mode:'review'}),e=>e.code==='rate_limited'&&e.retryable);
  let limitedCalls=0;await assert.rejects(()=>runReview({},'teacher',prepare,async()=>{limitedCalls++;return invokeResearchAI({mode:'review'});},()=>{}),e=>e.code==='rate_limited');assert.equal(limitedCalls,1,'gateway rate limits also do not trigger section requests');
- console.log('PASS: provider auth diagnosis, bounded 5xx/504 retries, 429 cooldown without split, safe diagnostics, key whitespace, quota refund, client propagation');
+ console.log('PASS: provider auth diagnosis, bounded 5xx/504 retries, 429 cooldown without split, safe diagnostics, key alias precedence and fallback, quota refund, client propagation');
 }finally{
  globalThis.fetch=oldFetch;globalThis.setTimeout=oldTimer;Date.now=oldNow;console.warn=oldWarn;console.error=oldError;delete globalThis.__testSupabase;
  await rm(dir,{recursive:true,force:true});

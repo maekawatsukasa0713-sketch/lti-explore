@@ -18,7 +18,8 @@
 ## 認証・鍵・利用枠
 
 関数内でJWTをAuthへ確認し、利用中のプロフィール・役割・学校別機能を判定するため、verify_jwt=falseで配備している。
-ANTHROPIC_API_KEYはSupabase Edge Function Secretsにだけ保存する。ANTHROPIC_MODELは任意で、ソースの既定はclaude-haiku-4-5-20251001。
+APIキーはSupabase Edge Function Secretsにだけ保存する。2026-11-05の設定対応では、`research-ai` は `tsukasa-api-key` を優先し、未設定または空白のみの場合だけ `ANTHROPIC_API_KEY` を使用する。どちらも周辺空白を除く。両方に値がある環境でキーを更新する場合は、優先される `tsukasa-api-key` を更新する。認証エラー時に別のキーへ自動切替はしない。`status` は設定の有無だけを返し、キーが有効かどうかは生成の成功で確認する。
+ANTHROPIC_MODELは任意で、ソースの既定はclaude-haiku-4-5-20251001。
 SUPABASE_SERVICE_ROLE_KEYはサーバー内で失敗時の利用枠払い戻しに使う。フロントやGitHubへ鍵の値を入れない。
 
 利用枠はDBのRPCで管理する。現在の登録解析は利用者あたり300件/時・全体3,000件/日、添削は20件/時・全体200件/日。回数の制限であり、金額の上限ではない。提供元側の課金上限も別途必要。
