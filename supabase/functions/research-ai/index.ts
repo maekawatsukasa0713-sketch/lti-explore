@@ -76,7 +76,8 @@ Deno.serve(async(req:Request)=>{
   if(Number(req.headers.get('content-length')||0)>12000000)return reply({error:'原稿が大きすぎます。8MB以下にしてください。'},413);
   const raw=await req.text();if(raw.length>12000000)return reply({error:'原稿が大きすぎます。'},413);
   let body;try{body=JSON.parse(raw);}catch{return reply({error:'リクエストを読み取れません。'},400);}
-  const key=Deno.env.get('ANTHROPIC_API_KEY')?.trim();const model=Deno.env.get('ANTHROPIC_MODEL')?.trim()||'claude-haiku-4-5-20251001';
+  // Prefer the saved alias; retain the canonical name for environments without a nonblank alias.
+  const key=Deno.env.get('tsukasa-api-key')?.trim()||Deno.env.get('ANTHROPIC_API_KEY')?.trim();const model=Deno.env.get('ANTHROPIC_MODEL')?.trim()||'claude-haiku-4-5-20251001';
   if(body.mode==='status')return reply({configured:!!key});
   if(!['register','review'].includes(body.mode))return reply({error:'解析方法が不正です。'},400);
   if(body.mode==='review'&&!['teacher','admin'].includes(profile.role))return reply({error:'AI添削は教員・運営向けの機能です。'},403);
