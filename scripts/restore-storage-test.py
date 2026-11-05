@@ -42,10 +42,19 @@ def validate_target(target):
 
 
 def snapshot(client, bucket):
-    rows = []
-    for page in client.get_paginator('list_objects_v2').paginate(Bucket=bucket):
-        rows.extend((v['Key'], int(v['Size']), v['ETag']) for v in page.get('Contents', []))
-    return sorted(rows)
+    return backup_module.inventory(client, bucket)
+
+
+def restore_plan(client, snapshot_id=None):
+    if snapshot_id:
+        manifest, _, _ = backup_module.load_snapshot(client, BACKUP_BUCKET, snapshot_id)
+        return [{'key': row['key'], 'source_key': row['object_key'], 'size': row['size'],
+                 'sha256': row['sha256'], 'metadata': row['metadata']} for row in manifest['objects']]
+    # The original same-key backups remain unchanged. Snapshot metadata and blobs
+    # must never appear as extra legacy documents or be restored into the app.
+    return [{'key': key, 'source_key': key, 'size': size, 'etag': etag}
+            for key, size, etag in snapshot(client, BACKUP_BUCKET)
+            if not key.startswith(backup_module.SNAPSHOT_PREFIX)]
 
 
 def public_access_blocked(bucket, key):
@@ -92,19 +101,16 @@ def open_document(path, key, content_type):
 
 def restore_object(client, target, row):
     validate_target(target)
-    key, expected_size, expected_etag = row
+    key, source_key, expected_size = row['key'], row['source_key'], row['size']
     operation = 'download_backup'
     restored_path = None
     try:
         with tempfile.TemporaryFile() as source_file:
-            source = client.get_object(Bucket=BACKUP_BUCKET, Key=key)
+            source = client.get_object(Bucket=BACKUP_BUCKET, Key=source_key)
             size, checksum = digest_object(source, source_file)
-            if size != expected_size or source.get('ETag') != expected_etag:
+            if size != expected_size or ('etag' in row and source.get('ETag') != row['etag']) or ('sha256' in row and checksum != row['sha256']):
                 raise RuntimeError('backup changed during restoration')
-            extra = {'ContentType': source.get('ContentType', 'application/octet-stream')}
-            for name in ('CacheControl', 'ContentDisposition', 'Metadata'):
-                if source.get(name):
-                    extra[name] = source[name]
+            extra = row.get('metadata') or backup_module.document_metadata(source)
             source_file.seek(0)
             operation = 'upload_restore'
             client.upload_fileobj(source_file, target, key, ExtraArgs=extra)
@@ -119,8 +125,8 @@ def restore_object(client, target, row):
                 if dest.get(name) != value:
                     raise RuntimeError('restored document metadata mismatch')
             operation = 'verify_backup_unchanged'
-            latest = client.head_object(Bucket=BACKUP_BUCKET, Key=key)
-            if latest.get('ETag') != expected_etag or int(latest['ContentLength']) != size:
+            latest = client.head_object(Bucket=BACKUP_BUCKET, Key=source_key)
+            if latest.get('ETag') != source.get('ETag') or int(latest['ContentLength']) != size:
                 raise RuntimeError('backup changed during restoration')
             return {'ok': True, 'key': key, 'size': size, 'sha256': checksum,
                     'path': restored_path, 'content_type': extra['ContentType']}
@@ -146,15 +152,24 @@ def cleanup(client, target):
         raise RuntimeError('restore cleanup left the test bucket')
 
 
-def cleanup_previous_run(client, target, expected_count):
+def cleanup_previous_run(client, target, expected_count=None, snapshot_id=None):
     """Recover an owned disposable bucket only if its inventory matches backup."""
     validate_target(target)
     original = snapshot(client, BACKUP_BUCKET)
+    plan = restore_plan(client, snapshot_id)
+    if expected_count is None and snapshot_id:
+        expected_count = len(plan)
     restored = snapshot(client, target)
-    if expected_count < 1 or len(original) != expected_count or len(restored) != expected_count:
+    if expected_count is None or expected_count < 1 or len(plan) != expected_count or len(restored) != expected_count:
         raise ValueError('cleanup recovery count does not match the verified restore run')
-    if [(row[0], row[1]) for row in restored] != [(row[0], row[1]) for row in original]:
+    if [(row[0], row[1]) for row in restored] != sorted((row['key'], row['size']) for row in plan):
         raise ValueError('cleanup recovery inventory differs from backup; refusing deletion')
+    # Matching names/sizes alone cannot identify an owned recovery run. Verify
+    # actual content before deleting anything, including legacy restores.
+    for row in plan:
+        expected = (row['size'], row['sha256']) if 'sha256' in row else digest_object(client.get_object(Bucket=BACKUP_BUCKET, Key=row['source_key']))
+        if digest_object(client.get_object(Bucket=target, Key=row['key'])) != expected:
+            raise ValueError('cleanup recovery content differs from backup; refusing deletion')
     cleanup(client, target)
     result = {'cleanup_success': True, 'removed': len(restored), 'destination': target,
               'backup_unchanged': snapshot(client, BACKUP_BUCKET) == original}
@@ -164,15 +179,18 @@ def cleanup_previous_run(client, target, expected_count):
     return result
 
 
-def restore(client, target, expected_count, viewer=open_document, access_probe=public_access_blocked):
+def restore(client, target, expected_count=None, viewer=open_document, access_probe=public_access_blocked, snapshot_id=None):
     validate_target(target)
+    original = snapshot(client, BACKUP_BUCKET)
+    plan = restore_plan(client, snapshot_id)
+    if expected_count is None and snapshot_id:
+        expected_count = len(plan)
     result = {'expected': expected_count, 'restored': 0, 'verified_bytes': 0,
               'failed': 0, 'view_failed': 0, 'pdf_rendered': 0, 'pdf_pages': 0,
               'encrypted_pdf': 0, 'docx_opened': 0, 'other': 0,
               'private_access_verified': False, 'backup_unchanged': False,
-              'cleanup_success': False, 'destination': target}
-    original = snapshot(client, BACKUP_BUCKET)
-    if len(original) != expected_count or expected_count < 1:
+              'cleanup_success': False, 'destination': target, 'snapshot_id': snapshot_id}
+    if expected_count is None or len(plan) != expected_count or expected_count < 1:
         raise ValueError('backup count differs from the approved restore snapshot')
     if target in {b['Name'] for b in client.list_buckets()['Buckets']}:
         raise ValueError('restore destination already exists; refusing to overwrite or delete it')
@@ -185,7 +203,7 @@ def restore(client, target, expected_count, viewer=open_document, access_probe=p
         if snapshot(client, target):
             raise RuntimeError('new restore destination is not empty')
         # Serialize the first file so anonymous access is checked before bulk restore.
-        first = restore_object(client, target, original[0])
+        first = restore_object(client, target, plan[0])
         if first['ok']:
             temporary_paths.add(first['path'])
             if not access_probe(target, first['key']):
@@ -228,11 +246,11 @@ def restore(client, target, expected_count, viewer=open_document, access_probe=p
         if not first['ok']:
             raise RuntimeError('first restore failed; bulk restore not started')
         with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [executor.submit(restore_object, client, target, row) for row in original[1:]]
+            futures = [executor.submit(restore_object, client, target, row) for row in plan[1:]]
             for future in as_completed(futures):
                 consume(future.result())
         restored = snapshot(client, target)
-        if [(row[0], row[1]) for row in restored] != [(row[0], row[1]) for row in original]:
+        if [(row[0], row[1]) for row in restored] != sorted((row['key'], row['size']) for row in plan):
             raise RuntimeError('restored inventory differs from backup')
         result['backup_unchanged'] = snapshot(client, BACKUP_BUCKET) == original
         if not result['backup_unchanged']:
@@ -258,7 +276,7 @@ def restore(client, target, expected_count, viewer=open_document, access_probe=p
 
 
 def main():
-    required = ('TEST_ACCESS_KEY_ID', 'TEST_SECRET_ACCESS_KEY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'EXPECTED_FILES')
+    required = ('TEST_ACCESS_KEY_ID', 'TEST_SECRET_ACCESS_KEY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT')
     if any(not os.environ.get(name) for name in required):
         raise SystemExit('restore test configuration is incomplete; nothing restored')
     import boto3
@@ -274,11 +292,18 @@ def main():
                                         request_checksum_calculation='when_required',
                                         response_checksum_validation='when_required'))
     try:
+        snapshot_id = os.environ.get('RESTORE_SNAPSHOT_ID') or None
+        if snapshot_id:
+            backup_module.validate_snapshot_id(snapshot_id)
+        requested_count = os.environ.get('EXPECTED_FILES', '').strip()
+        if requested_count and not re.fullmatch(r'[1-9][0-9]{0,9}', requested_count):
+            raise ValueError('invalid expected file count')
+        expected_count = int(requested_count) if requested_count else (None if snapshot_id else 539)
         if os.environ.get('CLEANUP_ONLY_RUN_ID'):
             previous_target = target_name(os.environ['CLEANUP_ONLY_RUN_ID'], os.environ.get('CLEANUP_ONLY_RUN_ATTEMPT', '1'))
-            result = cleanup_previous_run(client, previous_target, int(os.environ['EXPECTED_FILES']))
+            result = cleanup_previous_run(client, previous_target, expected_count, snapshot_id=snapshot_id)
             return
-        result = restore(client, target, int(os.environ['EXPECTED_FILES']))
+        result = restore(client, target, expected_count, snapshot_id=snapshot_id)
     except Exception as exc:
         print('::error::Restore preflight failed ' + json.dumps(
             failure_details(exc, 'restore_preflight', target), sort_keys=True), flush=True)

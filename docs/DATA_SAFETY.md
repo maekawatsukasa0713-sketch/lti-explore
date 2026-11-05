@@ -25,9 +25,9 @@ DB の各レコードには実ファイルの `storagePath` / `attachmentPath` /
 本番組織は Supabase Pro のため、Postgres DB は毎日自動バックアップされ、直近 7 日分を復元できます。
 ただし Supabase の DB バックアップには Storage の実ファイル本体は含まれません。
 
-StorageはGitHub Actions `.github/workflows/storage-backup.yml` を手動実行し、本番 `lti-documents` から試験プロジェクト内の専用・非公開 `lti-production-backup` バケットへ追加コピーします。
-現行workflowはworkflow_dispatchのみで、定期scheduleはありません。以前の「毎日03:30 JST」の記載は実装と一致していませんでした。
-本番で削除されたファイルをバックアップ側から削除しないため、誤削除への保険になります。
+StorageはGitHub Actions `.github/workflows/storage-backup.yml` で毎日03:30 JSTに実行し、本番 `lti-documents` から試験プロジェクト内の専用・非公開 `lti-production-backup` バケットへ内容別オブジェクトと時点manifestを追加します。手動実行にも対応します。
+2026-11-05の変更から、同名ファイルの変更でも旧内容を上書きせず、従来の同名バックアップと全世代を保持します。本番で削除されたファイルの旧版も削除しません。完了マーカーのない途中runは復元ポイントとして扱いません。
+[世代方式・指定snapshot復元・通知と保持の運用](storage-snapshots.md)を参照してください。scheduleの設定と、実際のバックアップ／復元成功は区別して実行結果を確認します。
 
 ### GitHub Secrets に一度だけ登録する値
 
@@ -38,7 +38,7 @@ StorageはGitHub Actions `.github/workflows/storage-backup.yml` を手動実行�
 - `TEST_S3_SECRET_ACCESS_KEY`
 
 Secret 値はコードやチャットに貼らず GitHub Secrets のみに登録します。
-未設定の場合、手動ワークフローは失敗終了します。元・既存バックアップ・コピー後の実ファイルをSHA-256で照合し、同サイズでも内容が異なればコピーします。認証・通信・照合の失敗もジョブを失敗させます。集計のfailedが0であることと不足件数を確認してください。全本体の読取はダウンロード通信を伴います。
+未設定の場合は失敗終了します。元・既存blob・コピー後の実ファイルをSHA-256で照合し、内容が変われば別のSHAキーへ追加します。既存SHAキーの不一致は上書きせず失敗します。認証・通信・照合の失敗もジョブを失敗させます。集計のfailedが0、completedがtrueであることを確認してください。全本体の読取はダウンロード通信を伴い、世代保持の自動削除はありません。
 
 ### 2026-10-02の読み取り点検
 

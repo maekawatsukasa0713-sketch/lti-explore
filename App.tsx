@@ -374,7 +374,7 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<Re
 //   一文字ごとに確定されたような挙動になっていた。トップレベルに出すことで解消する。
 // ----------------------------------------
 const PaperPreviewModal = ({
-  previewPaper, setPreviewPaper, step, schoolId, paperReplyDraft, setPaperReplyDraft, handleSendPaperMessage
+  previewPaper, setPreviewPaper, step, schoolId, paperReplyDraft, setPaperReplyDraft, handleSendPaperMessage, paperMessageSaving, paperMessageError, paperMessageSuccess
 }: {
   previewPaper: PublicPaper | null;
   setPreviewPaper: (p: PublicPaper | null) => void;
@@ -383,6 +383,9 @@ const PaperPreviewModal = ({
   paperReplyDraft: string;
   setPaperReplyDraft: (v: string) => void;
   handleSendPaperMessage: (paperId: number, text: string) => void;
+  paperMessageSaving: boolean;
+  paperMessageError: string;
+  paperMessageSuccess: string;
 }) => {
   if (!previewPaper) return null;
   const canSeeThread = step === 'lti-admin' || (step === 'teacher' && previewPaper.schoolId === schoolId);
@@ -395,7 +398,8 @@ const PaperPreviewModal = ({
             {previewPaper.field}
           </span>
           <button 
-            onClick={() => setPreviewPaper(null)}
+            disabled={paperMessageSaving}
+            onClick={() => { setPreviewPaper(null); setPaperReplyDraft(''); }}
             className="text-gray-400 hover:text-gray-600 font-bold text-sm"
           >
             ✕ 閉じる
@@ -436,8 +440,12 @@ const PaperPreviewModal = ({
                 ))
               )}
             </div>
+            {paperMessageError && <p role="alert" className="text-xs text-red-700">{paperMessageError}</p>}
+            {paperMessageSuccess && <p role="status" className="text-xs text-emerald-700">{paperMessageSuccess}</p>}
             <div className="flex items-start gap-2 pt-1">
               <textarea
+                disabled={paperMessageSaving}
+                aria-label="論文への返信"
                 value={paperReplyDraft}
                 onChange={(e) => setPaperReplyDraft(e.target.value)}
                 placeholder={isLtiViewer ? '学校側へのメッセージを入力...' : 'LTI運営への返信を入力...'}
@@ -445,10 +453,11 @@ const PaperPreviewModal = ({
                 className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 resize-none"
               ></textarea>
               <button
+                disabled={paperMessageSaving || !paperReplyDraft.trim()}
                 onClick={() => handleSendPaperMessage(previewPaper.id, paperReplyDraft)}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm whitespace-nowrap"
               >
-                <Send className="w-3.5 h-3.5 inline mr-1" />送信
+                <Send className="w-3.5 h-3.5 inline mr-1" />{paperMessageSaving ? '送信しています…' : '送信'}
               </button>
             </div>
           </div>
@@ -457,6 +466,7 @@ const PaperPreviewModal = ({
         <PdfView path={previewPaper.storagePath} />
         <div className="pt-2 flex justify-end">
           <button
+            disabled={paperMessageSaving}
             onClick={() => { setPreviewPaper(null); setPaperReplyDraft(''); }}
             className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl"
           >
@@ -596,13 +606,15 @@ const PaperDetailSplitView = ({
 };
 
 const RejectPaperModal = ({
-  rejectTargetPaper, setRejectTargetPaper, rejectMessageDraft, setRejectMessageDraft, handleConfirmRejectPaper
+  rejectTargetPaper, setRejectTargetPaper, rejectMessageDraft, setRejectMessageDraft, handleConfirmRejectPaper, paperMessageSaving, rejectPaperError
 }: {
   rejectTargetPaper: PublicPaper | null;
   setRejectTargetPaper: (p: PublicPaper | null) => void;
   rejectMessageDraft: string;
   setRejectMessageDraft: (v: string) => void;
   handleConfirmRejectPaper: () => void;
+  paperMessageSaving: boolean;
+  rejectPaperError: string;
 }) => {
   if (!rejectTargetPaper) return null;
   return (
@@ -610,12 +622,15 @@ const RejectPaperModal = ({
       <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-gray-200">
         <div className="flex items-center justify-between border-b pb-3">
           <h3 className="text-base font-bold text-gray-900">論文を差し戻す</h3>
-          <button onClick={() => { setRejectTargetPaper(null); setRejectMessageDraft(''); }} className="text-gray-400 hover:text-gray-600 font-bold text-sm">✕ 閉じる</button>
+          <button disabled={paperMessageSaving} onClick={() => { setRejectTargetPaper(null); setRejectMessageDraft(''); }} className="text-gray-400 hover:text-gray-600 font-bold text-sm">✕ 閉じる</button>
         </div>
         <p className="text-xs text-gray-500">「{rejectTargetPaper.title}」（{rejectTargetPaper.schoolName} / {rejectTargetPaper.submittedByTeacherName} 先生）を差し戻します。</p>
+        {rejectPaperError && <p role="alert" className="text-sm text-red-700">{rejectPaperError}</p>}
         <div className="space-y-1">
           <label className="text-xs font-bold text-gray-700">差し戻し理由・修正依頼メッセージ（任意）</label>
           <textarea
+            disabled={paperMessageSaving}
+            aria-label="差し戻し理由・修正依頼メッセージ"
             value={rejectMessageDraft}
             onChange={(e) => setRejectMessageDraft(e.target.value)}
             placeholder="例: アブストラクトの内容をもう少し具体的にご記載ください。"
@@ -626,16 +641,18 @@ const RejectPaperModal = ({
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button
+            disabled={paperMessageSaving}
             onClick={() => { setRejectTargetPaper(null); setRejectMessageDraft(''); }}
             className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl"
           >
             キャンセル
           </button>
           <button
+            disabled={paperMessageSaving}
             onClick={handleConfirmRejectPaper}
             className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white font-bold text-xs rounded-xl shadow-sm"
           >
-            差し戻す
+            {paperMessageSaving ? '保存しています…' : '差し戻す'}
           </button>
         </div>
       </div>
@@ -694,6 +711,35 @@ const MaterialPreviewModal = ({previewMaterialModalData:mat,setPreviewMaterialMo
  const [full,setFull]=useState(false);
  if(!mat)return null;
  return <div className="fixed inset-0 z-[90] bg-black/70 p-2 flex justify-center"><section className={`bg-white overflow-auto ${full?'w-full':'max-w-5xl w-full rounded-2xl'}`}><header className="sticky top-0 bg-white border-b p-4 flex gap-4 items-center z-10"><h2 className="font-bold flex-1">{mat.title}</h2><button onClick={()=>setFull(!full)}>{full?'通常表示':'全画面表示'}</button><button onClick={()=>close(null)}>閉じる</button></header><p className="p-5 text-gray-600">{mat.description}</p>{mat.slides.map((slide,i)=><figure key={slide.id} className="mx-auto max-w-5xl"><img src={slide.imageUrl} alt={slide.caption||`教材 ${i+1}ページ`} loading="lazy" className="w-full h-auto"/>{slide.caption&&<figcaption className="p-4 text-sm">{slide.caption}</figcaption>}</figure>)}</section></div>;
+};
+
+const AdminSystemGuide = ({tab, onNavigate}: {tab: string; onNavigate: (tab: string) => void}) => {
+  const navigationClass = 'inline-flex rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-bold text-indigo-800 hover:bg-indigo-100';
+  if (tab === '設定') return <section className="max-w-3xl space-y-5">
+    <div className="rounded-2xl border bg-white p-6 space-y-2"><h2 className="text-xl font-bold">設定</h2><p className="text-sm text-gray-600">設定する内容に合わせて、管理画面を開いてください。</p></div>
+    <div className="rounded-2xl border bg-white p-6 space-y-3"><h3 className="font-bold">学校・利用者と利用機能</h3><p className="text-sm text-gray-600">学校の登録、利用者の確認、学校ごとの教員・生徒の利用機能を管理できます。利用機能の変更は、その学校の同じ役割の既存アカウントにも適用されます。</p><button type="button" className={navigationClass} onClick={() => onNavigate('学校・利用者管理')}>学校・利用者管理を開く</button></div>
+    <div className="rounded-2xl border bg-white p-6 space-y-3"><h3 className="font-bold">運営者プロフィール</h3><p className="text-sm text-gray-600">運営者の一覧と自分の表示名を確認できます。自分のパスワード変更は、画面の「パスワード変更」から行えます。</p><button type="button" className={navigationClass} onClick={() => onNavigate('運営者管理')}>運営者管理を開く</button></div>
+  </section>;
+  if (tab === '権限管理') return <section className="max-w-4xl space-y-5">
+    <div className="rounded-2xl border bg-white p-6 space-y-2"><h2 className="text-xl font-bold">権限管理</h2><p className="text-sm text-gray-600">現在の閲覧範囲と、学校ごとの利用機能の設定場所を確認できます。</p></div>
+    <div className="rounded-2xl border bg-white p-6 space-y-4">
+      <h3 className="font-bold">役割ごとの基本的な範囲</h3>
+      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b"><th scope="col" className="p-3">役割</th><th scope="col" className="p-3">閲覧・管理できる内容</th></tr></thead><tbody>
+        <tr className="border-b"><th scope="row" className="p-3">LTI運営</th><td className="p-3">二段階認証のうえで、学校・利用者、教材、公開申請、問い合わせを管理します。</td></tr>
+        <tr className="border-b"><th scope="row" className="p-3">教員</th><td className="p-3">所属校の課題・教材・生徒の提出物を確認します。同じ学校の全教員が、担当外の生徒の提出物も閲覧できます。</td></tr>
+        <tr><th scope="row" className="p-3">生徒</th><td className="p-3">所属校の課題・教材と、自分の提出物・フィードバック・保存文献を確認します。</td></tr>
+      </tbody></table></div>
+      <p className="text-sm text-gray-600">公開論文は、公開論文機能を利用できる学校で共有されます。学校を指定したお知らせは、対象校だけに表示されます。</p>
+      <p className="text-sm text-gray-600">課題管理の「チェックした生徒」は教員ごとの表示の絞り込みです。学校内の閲覧範囲は変わりません。</p>
+      <button type="button" className={navigationClass} onClick={() => onNavigate('学校・利用者管理')}>学校ごとの利用機能を確認する</button>
+    </div>
+  </section>;
+  return <section className="max-w-3xl space-y-5">
+    <div className="rounded-2xl border bg-white p-6 space-y-2"><h2 className="text-xl font-bold">ヘルプ</h2><p className="text-sm text-gray-600">運営でよく使う操作と、問題が起きた場合の確認手順です。</p></div>
+    <div className="rounded-2xl border bg-white p-6 space-y-3"><h3 className="font-bold">教材を学校へ配信する</h3><ol className="list-decimal pl-5 space-y-2 text-sm text-gray-600"><li>対象校・教材タイトル・説明を入力し、画像をスライドとして追加します。</li><li>並び順とキャプションを確認して配信し、保存完了の表示を待ちます。</li><li>保存に失敗した場合は、保持された入力内容を確認して再試行します。保存完了後に表示更新だけ失敗した場合は、再送せず再読み込みします。</li></ol><button type="button" className={navigationClass} onClick={() => onNavigate('教材管理')}>教材管理を開く</button></div>
+    <div className="rounded-2xl border bg-white p-6 space-y-3"><h3 className="font-bold">公開申請を確認する</h3><p className="text-sm text-gray-600">原稿と著者表記、公開範囲を確認して審査します。公開前に、原稿内の氏名・連絡先などの扱いも確認してください。</p><button type="button" className={navigationClass} onClick={() => onNavigate('公開申請一覧')}>公開申請一覧を開く</button></div>
+    <div className="rounded-2xl border bg-white p-6 space-y-3"><h3 className="font-bold">学校からの問い合わせに対応する</h3><p className="text-sm text-gray-600">発生時刻、操作した機能、画面のエラーを確認します。AI添削のエラーでは、表示された診断情報も原因の確認に使えます。パスワードやAPIキーを問い合わせ本文へ記載する必要はありません。</p><button type="button" className={navigationClass} onClick={() => onNavigate('LTI受信ボックス')}>LTI受信ボックスを開く</button></div>
+  </section>;
 };
 
 const ResubmitConfirmModal = ({
@@ -855,7 +901,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [ltiAdminUsers, setLtiAdminUsers] = useCloudList<LtiAdminUser[]>('lti_admin_users', DEFAULT_LTI_ADMIN_USERS);
   const [papers, setPapers, savePapers] = useCloudList<PublicPaper[]>('lti_papers', DEFAULT_PAPERS);
   const [assignments, setAssignments, saveAssignments] = useCloudList<AssignmentData[]>('lti_assignments', DEFAULT_ASSIGNMENTS);
-  const [teachingMaterials, setTeachingMaterials] = useCloudList<TeachingMaterial[]>('lti_teaching_materials', DEFAULT_TEACHING_MATERIALS);
+  const [teachingMaterials, , saveTeachingMaterials] = useCloudList<TeachingMaterial[]>('lti_teaching_materials', DEFAULT_TEACHING_MATERIALS);
   const [teachersList, setTeachersList] = useCloudList('lti_teachers_list', generateInitialTeachers());
   const [studentsList, setStudentsList] = useCloudList('lti_students_list', generateInitialStudents());
   // AI添削の結果を送信した、生徒宛メッセージの一覧（教員・生徒どちらの画面からも参照する）
@@ -890,7 +936,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [registeredSchoolIds] = useCloudList<string[]>('lti_registered_school_ids', DEFAULT_REGISTERED_SCHOOL_IDS);
   
   // 【要件②用】学会・コンテストのリスト管理
-  const [contests, setContests] = useCloudList<ContestItem[]>('lti_contests', DEFAULT_CONTESTS);
+  const [contests, , saveContests] = useCloudList<ContestItem[]>('lti_contests', DEFAULT_CONTESTS);
 
   const [currentLtiAdminId, setCurrentLtiAdminId] = useState<string>(profile.id);
 
@@ -920,6 +966,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   // 教材（スライド）作成ドラフト：画像を追加していく形の教材ビルダー用ステート
   const [draftSlides, setDraftSlides] = useState<MaterialSlide[]>([]);
   const [materialMessage, setMaterialMessage] = useState('');
+  const [materialError, setMaterialError] = useState('');
+  const [materialSaving, setMaterialSaving] = useState(false);
+  const materialPending = useRef(false);
+  const materialDraftId = useRef<number | null>(null);
+  const materialImageReads = useRef(0);
+  const [materialReadingImages, setMaterialReadingImages] = useState(false);
 
   // 【要件②用】LTI運営側：学会・コンテスト新規作成用ステート
   const [newContestTitle, setNewContestTitle] = useState('');
@@ -934,6 +986,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [newContestTargetSchools, setNewContestTargetSchools] = useState<string[]>([]);
   const [editingContestId, setEditingContestId] = useState<number | null>(null);
   const [contestMessage, setContestMessage] = useState('');
+  const [contestError, setContestError] = useState('');
+  const [contestSaving, setContestSaving] = useState(false);
+  const contestPending = useRef(false);
+  const contestDraftId = useRef<number | null>(null);
+  const uploadedContestBrochures = useRef(new WeakMap<File, string>());
+  const contestFileInput = useRef<HTMLInputElement | null>(null);
 
   const isContestExpired = (c: ContestItem) => {
     if (!c.deadlineDate) return false;
@@ -943,6 +1001,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   };
 
   const resetContestForm = () => {
+    contestDraftId.current = null;
+    if (contestFileInput.current) contestFileInput.current.value = '';
     setEditingContestId(null);
     setNewContestTitle('');
     setNewContestCategory('ビジネス');
@@ -957,6 +1017,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   };
 
   const handleStartEditContest = (c: ContestItem) => {
+    if (contestPending.current) return;
+    contestDraftId.current = null;
+    setContestError('');
+    setContestMessage('');
+    if (contestFileInput.current) contestFileInput.current.value = '';
     setEditingContestId(c.id);
     setNewContestTitle(c.title);
     setNewContestCategory(c.category);
@@ -973,54 +1038,74 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
   const handleCreateContest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newContestTitle.trim() || !newContestDate.trim()) return;
-
-    const existing = editingContestId !== null ? contests.find(c => c.id === editingContestId) : undefined;
-    let brochurePath = existing?.brochurePath;
-    let brochureName = existing?.brochureName;
-
-    if (newContestBrochureFile) {
-      try {
-        setContestBrochureUploadProgress(0);
-        brochurePath = await uploadPdf(newContestBrochureFile, percent => setContestBrochureUploadProgress(percent));
+    if (contestPending.current || !newContestTitle.trim() || !newContestDate.trim()) return;
+    setContestMessage('');
+    setContestError('');
+    if (newContestTargetType === 'specific' && newContestTargetSchools.length === 0) {
+      setContestError('学校指定で配信する場合は、対象校を1校以上選択してください。');
+      return;
+    }
+    contestPending.current = true;
+    setContestSaving(true);
+    try {
+      const existing = editingContestId !== null ? contests.find(c => c.id === editingContestId) : undefined;
+      if (editingContestId !== null && !existing) throw new Error('編集対象が見つかりません。一覧を再読み込みして確認してください。');
+      let brochurePath = existing?.brochurePath;
+      let brochureName = existing?.brochureName;
+      if (newContestBrochureFile) {
+        brochurePath = uploadedContestBrochures.current.get(newContestBrochureFile);
+        if (!brochurePath) {
+          setContestBrochureUploadProgress(0);
+          brochurePath = await uploadPdf(newContestBrochureFile, percent => setContestBrochureUploadProgress(percent));
+          uploadedContestBrochures.current.set(newContestBrochureFile, brochurePath);
+        }
         brochureName = newContestBrochureFile.name;
-      } catch (error) {
-        setContestMessage(`パンフレットをアップロードできませんでした: ${(error as Error).message}`);
-        setContestBrochureUploadProgress(null);
-        return;
       }
+      const payload = {
+        title: newContestTitle.trim(),
+        category: newContestCategory.trim(),
+        date: newContestDate.trim(),
+        deadlineDate: newContestDeadlineDate || undefined,
+        description: newContestDesc.trim() || '詳細説明はありません。',
+        url: safeExternalUrl(newContestUrl) || undefined,
+        brochurePath,
+        brochureName,
+        targetType: newContestTargetType,
+        targetSchoolIds: newContestTargetType === 'specific' ? newContestTargetSchools : undefined,
+      };
+      const newContest: ContestItem = { id: existing?.id ?? (contestDraftId.current ??= nextTeacherRecordId()), ...payload };
+      const result = await saveContests(existing
+        ? contests.map(c => c.id === existing.id ? { ...c, ...payload } : c)
+        : [newContest, ...contests.filter(c => c.id !== newContest.id)]);
+      if (!result.ok) throw new Error(result.error);
+      resetContestForm();
+      setContestMessage((existing ? '学会・コンテスト情報を更新し、再公開しました。' : '学会・コンテスト情報を配信しました。')
+        + (result.refreshed ? '' : '保存は完了しています。再送信せず、画面を再読み込みしてください。'));
+    } catch (error) {
+      setContestError(`保存を確認できませんでした。入力と添付は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+    } finally {
+      contestPending.current = false;
+      setContestSaving(false);
+      setContestBrochureUploadProgress(null);
     }
-
-    const payload = {
-      title: newContestTitle.trim(),
-      category: newContestCategory.trim(),
-      date: newContestDate.trim(),
-      deadlineDate: newContestDeadlineDate || undefined,
-      description: newContestDesc.trim() || '詳細説明はありません。',
-      url: safeExternalUrl(newContestUrl) || undefined,
-      brochurePath,
-      brochureName,
-      targetType: newContestTargetType,
-      targetSchoolIds: newContestTargetType === 'specific' ? newContestTargetSchools : undefined,
-    };
-
-    if (editingContestId !== null) {
-      setContests(contests.map(c => c.id === editingContestId ? { ...c, ...payload } : c));
-      setContestMessage('学会・コンテスト情報を更新し、再公開しました！');
-    } else {
-      const newContest: ContestItem = { id: Date.now(), ...payload };
-      setContests([newContest, ...contests]);
-      setContestMessage('学会・コンテスト情報を正常に配信しました！');
-    }
-
-    resetContestForm();
-    setTimeout(() => setContestMessage(''), 4000);
   };
 
-  const handleDeleteContest = (id: number) => {
-    if (confirm('この学会・コンテスト情報を削除しますか？')) {
-      setContests(contests.filter(c => c.id !== id));
+  const handleDeleteContest = async (id: number) => {
+    if (contestPending.current || !contests.some(c => c.id === id) || !confirm('この学会・コンテスト情報を削除しますか？')) return;
+    contestPending.current = true;
+    setContestSaving(true);
+    setContestMessage('');
+    setContestError('');
+    try {
+      const result = await saveContests(contests.filter(c => c.id !== id));
+      if (!result.ok) throw new Error(result.error);
       if (editingContestId === id) resetContestForm();
+      setContestMessage(result.refreshed ? '学会・コンテスト情報を削除しました。' : '削除は完了しています。画面を再読み込みしてください。');
+    } catch (error) {
+      setContestError(`削除を確認できませんでした。入力は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+    } finally {
+      contestPending.current = false;
+      setContestSaving(false);
     }
   };
 
@@ -1031,8 +1116,13 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [newNoticeTargetSchools, setNewNoticeTargetSchools] = useState<string[]>([]);
   const [editingNoticeId, setEditingNoticeId] = useState<number | null>(null);
   const [noticeMessage, setNoticeMessage] = useState('');
+  const [noticeError, setNoticeError] = useState('');
+  const [noticeSaving, setNoticeSaving] = useState(false);
+  const noticePending = useRef(false);
+  const noticeDraftId = useRef<number | null>(null);
 
   const resetNoticeForm = () => {
+    noticeDraftId.current = null;
     setEditingNoticeId(null);
     setNewNoticeTitle('');
     setNewNoticeContent('');
@@ -1041,6 +1131,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   };
 
   const handleStartEditNotice = (n: NoticeItem) => {
+    if (noticePending.current) return;
+    noticeDraftId.current = null;
+    setNoticeError('');
+    setNoticeMessage('');
     setEditingNoticeId(n.id);
     setNewNoticeTitle(n.title);
     setNewNoticeContent(n.content);
@@ -1049,48 +1143,58 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     window.scrollTo(0, 0);
   };
 
-  const handleSaveNotice = (e: React.FormEvent) => {
+  const handleSaveNotice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newNoticeTitle.trim()) return;
+    if (noticePending.current || !newNoticeTitle.trim()) return;
+    setNoticeMessage('');
+    setNoticeError('');
     if (newNoticeTargetType === 'specific' && newNoticeTargetSchools.length === 0) {
-      setNoticeMessage('学校指定で配信する場合は、対象校を1校以上選択してください。');
+      setNoticeError('学校指定で配信する場合は、対象校を1校以上選択してください。');
       return;
     }
-    const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '/');
-    const audience = {
-      targetType: newNoticeTargetType,
-      targetSchoolIds: newNoticeTargetType === 'specific' ? newNoticeTargetSchools : undefined,
-    } as const;
-
-    if (editingNoticeId !== null) {
-      setNotices(notices.map(n => n.id === editingNoticeId ? {
-        ...n,
-        title: newNoticeTitle.trim(),
-        content: newNoticeContent.trim() || '詳細はありません。',
-        ...audience,
-      } : n));
-      setNoticeMessage('お知らせを更新しました！');
-    } else {
+    noticePending.current = true;
+    setNoticeSaving(true);
+    try {
+      const existing = editingNoticeId !== null ? notices.find(n => n.id === editingNoticeId) : undefined;
+      if (editingNoticeId !== null && !existing) throw new Error('編集対象が見つかりません。一覧を再読み込みして確認してください。');
       const newNotice: NoticeItem = {
-        id: Date.now(),
+        ...existing,
+        id: existing?.id ?? (noticeDraftId.current ??= nextTeacherRecordId()),
         title: newNoticeTitle.trim(),
-        date: todayStr,
+        date: existing?.date ?? new Date().toISOString().split('T')[0].replace(/-/g, '/'),
         content: newNoticeContent.trim() || '詳細はありません。',
-        ...audience,
+        targetType: newNoticeTargetType,
+        targetSchoolIds: newNoticeTargetType === 'specific' ? newNoticeTargetSchools : undefined,
       };
-      setNotices([newNotice, ...notices]);
-      setNoticeMessage(newNoticeTargetType === 'specific'
-        ? '指定した学校にお知らせを配信しました！'
-        : '全学校にお知らせを配信しました！');
+      const result = await saveNotices(existing ? notices.map(n => n.id === existing.id ? newNotice : n) : [newNotice, ...notices.filter(n => n.id !== newNotice.id)]);
+      if (!result.ok) throw new Error(result.error);
+      resetNoticeForm();
+      setNoticeMessage((existing ? 'お知らせを更新しました。' : newNotice.targetType === 'specific' ? '指定した学校にお知らせを配信しました。' : '全学校にお知らせを配信しました。')
+        + (result.refreshed ? '' : '保存は完了しています。再送信せず、画面を再読み込みしてください。'));
+    } catch (error) {
+      setNoticeError(`保存を確認できませんでした。入力は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+    } finally {
+      noticePending.current = false;
+      setNoticeSaving(false);
     }
-    resetNoticeForm();
-    setTimeout(() => setNoticeMessage(''), 4000);
   };
 
-  const handleDeleteNotice = (id: number) => {
-    if (confirm('このお知らせを削除しますか？')) {
-      setNotices(notices.filter(n => n.id !== id));
+  const handleDeleteNotice = async (id: number) => {
+    if (noticePending.current || !notices.some(n => n.id === id) || !confirm('このお知らせを削除しますか？')) return;
+    noticePending.current = true;
+    setNoticeSaving(true);
+    setNoticeMessage('');
+    setNoticeError('');
+    try {
+      const result = await saveNotices(notices.filter(n => n.id !== id));
+      if (!result.ok) throw new Error(result.error);
       if (editingNoticeId === id) resetNoticeForm();
+      setNoticeMessage(result.refreshed ? 'お知らせを削除しました。' : '削除は完了しています。画面を再読み込みしてください。');
+    } catch (error) {
+      setNoticeError(`削除を確認できませんでした。入力は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+    } finally {
+      noticePending.current = false;
+      setNoticeSaving(false);
     }
   };
 
@@ -1098,56 +1202,130 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [rejectTargetPaper, setRejectTargetPaper] = useState<PublicPaper | null>(null);
   const [rejectMessageDraft, setRejectMessageDraft] = useState('');
   const [paperReplyDraft, setPaperReplyDraft] = useState('');
+  const [paperMessageSaving, setPaperMessageSaving] = useState(false);
+  const [paperMessageError, setPaperMessageError] = useState('');
+  const [paperMessageSuccess, setPaperMessageSuccess] = useState('');
+  const [rejectPaperError, setRejectPaperError] = useState('');
+  const paperMessagePending = useRef(false);
+  const paperMessageDraftIds = useRef(new Map<string, number>());
 
   const nowJpString = () => new Date().toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-
-  const handleConfirmRejectPaper = () => {
-    if (!rejectTargetPaper) return;
-    const senderName = ltiAdminUsers.find(u => u.id === currentLtiAdminId)?.name || 'LTI運営';
-    setPapers(papers.map(p => {
-      if (p.id !== rejectTargetPaper.id) return p;
-      const newMessages = rejectMessageDraft.trim()
-        ? [...(p.messages || []), { id: Date.now(), sender: 'lti' as const, senderName, text: rejectMessageDraft, createdAt: nowJpString() }]
-        : (p.messages || []);
-      return { ...p, status: '差し戻し' as const, messages: newMessages };
-    }));
-    setRejectTargetPaper(null);
-    setRejectMessageDraft('');
+  const openPaperPreview = (paper: PublicPaper) => {
+    if (paperMessagePending.current) return;
+    paperMessageDraftIds.current.delete(`reply:${paper.id}`);
+    setPaperMessageError('');
+    setPaperMessageSuccess('');
+    setPreviewPaper(paper);
+  };
+  const openRejectPaper = (paper: PublicPaper) => {
+    if (paperMessagePending.current) return;
+    paperMessageDraftIds.current.delete(`reject:${paper.id}`);
+    setRejectPaperError('');
+    setRejectTargetPaper(paper);
   };
 
-  const handleSendPaperMessage = (paperId: number, text: string) => {
-    if (!text.trim()) return;
-    const isLti = step === 'lti-admin';
-    const senderName = isLti
-      ? (ltiAdminUsers.find(u => u.id === currentLtiAdminId)?.name || 'LTI運営')
-      : (teachersList.find(t => t.id === currentTeacherId && t.schoolId === schoolId)?.name || '教員');
-    setPapers(papers.map(p => p.id === paperId ? {
-      ...p,
-      messages: [...(p.messages || []), { id: Date.now(), sender: (isLti ? 'lti' : 'teacher') as 'lti' | 'teacher', senderName, text, createdAt: nowJpString() }]
-    } : p));
-    setPaperReplyDraft('');
+  const handleConfirmRejectPaper = async () => {
+    if (paperMessagePending.current || !rejectTargetPaper) return;
+    paperMessagePending.current = true;
+    setPaperMessageSaving(true);
+    setRejectPaperError('');
+    setPublicationMessage('');
+    const key = `reject:${rejectTargetPaper.id}`;
+    try {
+      if (!papers.some(p => p.id === rejectTargetPaper.id)) throw new Error('対象の論文が見つかりません。一覧を再読み込みして確認してください。');
+      const senderName = ltiAdminUsers.find(u => u.id === currentLtiAdminId)?.name || 'LTI運営';
+      const id = paperMessageDraftIds.current.get(key) ?? nextTeacherRecordId();
+      paperMessageDraftIds.current.set(key, id);
+      const result = await savePapers(papers.map(p => {
+        if (p.id !== rejectTargetPaper.id) return p;
+        const message: PaperMessage = { id, sender: 'lti', senderName, text: rejectMessageDraft, createdAt: nowJpString() };
+        const messages = rejectMessageDraft.trim()
+          ? [...(p.messages || []).filter(m => m.id !== id), message]
+          : (p.messages || []);
+        return { ...p, status: '差し戻し' as const, messages };
+      }));
+      if (!result.ok) throw new Error(result.error);
+      paperMessageDraftIds.current.delete(key);
+      setRejectTargetPaper(null);
+      setRejectMessageDraft('');
+      setPublicationMessage(result.refreshed ? '論文を差し戻しました。' : '差し戻しは保存済みです。再送信せず、画面を再読み込みしてください。');
+    } catch (error) {
+      setRejectPaperError(`保存を確認できませんでした。差し戻し理由は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+    } finally {
+      paperMessagePending.current = false;
+      setPaperMessageSaving(false);
+    }
+  };
+
+  const handleSendPaperMessage = async (paperId: number, text: string) => {
+    if (paperMessagePending.current || !text.trim()) return;
+    paperMessagePending.current = true;
+    setPaperMessageSaving(true);
+    setPaperMessageError('');
+    setPaperMessageSuccess('');
+    const key = `reply:${paperId}`;
+    try {
+      const paper = papers.find(p => p.id === paperId);
+      if (!paper) throw new Error('対象の論文が見つかりません。一覧を再読み込みして確認してください。');
+      const isLti = step === 'lti-admin';
+      const senderName = isLti
+        ? (ltiAdminUsers.find(u => u.id === currentLtiAdminId)?.name || 'LTI運営')
+        : (teachersList.find(t => t.id === currentTeacherId && t.schoolId === schoolId)?.name || '教員');
+      const id = paperMessageDraftIds.current.get(key) ?? nextTeacherRecordId();
+      paperMessageDraftIds.current.set(key, id);
+      const message: PaperMessage = { id, sender: isLti ? 'lti' : 'teacher', senderName, text, createdAt: nowJpString() };
+      const updated = { ...paper, messages: [...(paper.messages || []).filter(m => m.id !== id), message] };
+      const result = await savePapers(papers.map(p => p.id === paperId ? updated : p));
+      if (!result.ok) throw new Error(result.error);
+      paperMessageDraftIds.current.delete(key);
+      setPaperReplyDraft('');
+      setPreviewPaper(current => current?.id === paperId ? updated : current);
+      setPaperMessageSuccess(result.refreshed ? 'メッセージを送信しました。' : '送信は完了しています。再送信せず、画面を再読み込みしてください。');
+    } catch (error) {
+      setPaperMessageError(`送信を確認できませんでした。入力は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+    } finally {
+      paperMessagePending.current = false;
+      setPaperMessageSaving(false);
+    }
   };
 
   // 画像ファイルを1枚、教材ドラフトのスライドとして追加する（base64化してブラウザ内に保持）
   const handleAddMaterialSlideImage = (file: File | null) => {
-    if (!file) return;
+    if (!file || materialPending.current) return;
+    materialImageReads.current++;
+    setMaterialReadingImages(true);
+    setMaterialError('');
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
       setDraftSlides(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, imageUrl: dataUrl, caption: '' }]);
     };
-    reader.readAsDataURL(file);
+    const showReadError = () => setMaterialError('画像を読み込めませんでした。別の画像を選択してください。入力済みの内容は保持しています。');
+    reader.onerror = showReadError;
+    reader.onabort = showReadError;
+    let finished = false;
+    const finishReading = () => {
+      if (finished) return;
+      finished = true;
+      materialImageReads.current--;
+      setMaterialReadingImages(materialImageReads.current > 0);
+    };
+    reader.onloadend = finishReading;
+    try { reader.readAsDataURL(file); } catch { showReadError(); finishReading(); }
   };
 
   const updateDraftSlideCaption = (id: string, caption: string) => {
+    if (materialPending.current) return;
     setDraftSlides(prev => prev.map(s => s.id === id ? { ...s, caption } : s));
   };
 
   const removeDraftSlide = (id: string) => {
+    if (materialPending.current) return;
     setDraftSlides(prev => prev.filter(s => s.id !== id));
   };
 
   const moveDraftSlide = (id: string, direction: 'up' | 'down') => {
+    if (materialPending.current) return;
     setDraftSlides(prev => {
       const idx = prev.findIndex(s => s.id === id);
       const newIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -1158,34 +1336,63 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     });
   };
 
-  const handleUploadMaterial = (e: React.FormEvent) => {
+  const handleUploadMaterial = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (materialPending.current || materialImageReads.current > 0) return;
     if (!newMaterialTitle.trim() || draftSlides.length === 0) return;
-
-    const newMaterial: TeachingMaterial = {
-      id: Date.now(),
-      schoolId: materialSchoolId,
-      title: newMaterialTitle,
-      description: newMaterialDesc || '説明はありません。',
-      slides: draftSlides,
-      uploadedAt: new Date().toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-    };
-    setTeachingMaterials([newMaterial, ...teachingMaterials]);
-    setNewMaterialTitle('');
-    setNewMaterialDesc('');
-    setDraftSlides([]);
-    setMaterialMessage('教材をアップロードしました！（本番運用ではSupabase Storageへの保存に切り替え予定です）');
-    setTimeout(() => setMaterialMessage(''), 4000);
+    setMaterialError('');
+    setMaterialMessage('');
+    if (!cloud.schools.some(s => s.id === materialSchoolId)) {
+      setMaterialError('配信先の学校を選択してください。');
+      return;
+    }
+    materialPending.current = true;
+    setMaterialSaving(true);
+    try {
+      const newMaterial: TeachingMaterial = {
+        id: materialDraftId.current ??= Date.now(),
+        schoolId: materialSchoolId,
+        title: newMaterialTitle,
+        description: newMaterialDesc || '説明はありません。',
+        slides: draftSlides,
+        uploadedAt: new Date().toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      };
+      const result = await saveTeachingMaterials([newMaterial, ...teachingMaterials.filter(m => m.id !== newMaterial.id)]);
+      if (!result.ok) throw new Error(result.error);
+      materialDraftId.current = null;
+      setNewMaterialTitle('');
+      setNewMaterialDesc('');
+      setDraftSlides([]);
+      setMaterialMessage(result.refreshed ? '教材を保存・配信しました。' : '教材の保存・配信は完了しています。再送信せず、画面を再読み込みしてください。');
+    } catch (error) {
+      setMaterialError(`保存を確認できませんでした。タイトル・説明・画像は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+    } finally {
+      materialPending.current = false;
+      setMaterialSaving(false);
+    }
   };
 
-  const handleDeleteMaterial = (id: number) => {
-    if (confirm('この教材を削除しますか？')) {
-      setTeachingMaterials(teachingMaterials.filter(m => m.id !== id));
+  const handleDeleteMaterial = async (id: number) => {
+    if (materialPending.current || !teachingMaterials.some(m => m.id === id)) return;
+    if (!confirm('この教材を削除しますか？')) return;
+    materialPending.current = true;
+    setMaterialSaving(true);
+    setMaterialMessage('');
+    setMaterialError('');
+    try {
+      const result = await saveTeachingMaterials(teachingMaterials.filter(m => m.id !== id));
+      if (!result.ok) throw new Error(result.error);
+      setMaterialMessage(result.refreshed ? '教材を削除しました。' : '教材の削除は完了しています。画面を再読み込みしてください。');
+    } catch (error) {
+      setMaterialError(`削除を確認できませんでした。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+    } finally {
+      materialPending.current = false;
+      setMaterialSaving(false);
     }
   };
 
   // LTI運営管理データステート
-  const [notices, setNotices] = useCloudList<NoticeItem[]>('lti_notices', DEFAULT_NOTICES);
+  const [notices, , saveNotices] = useCloudList<NoticeItem[]>('lti_notices', DEFAULT_NOTICES);
 
   // 先生側：公開申請用フォームステート
   const [publicationMessage,setPublicationMessage]=useState('');
@@ -1554,8 +1761,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
     return (
       <div className="lti-shell min-h-screen bg-gray-50 flex font-sans text-gray-900">
-        <PaperPreviewModal previewPaper={previewPaper} setPreviewPaper={setPreviewPaper} step={step} schoolId={schoolId} paperReplyDraft={paperReplyDraft} setPaperReplyDraft={setPaperReplyDraft} handleSendPaperMessage={handleSendPaperMessage} />
-        <RejectPaperModal rejectTargetPaper={rejectTargetPaper} setRejectTargetPaper={setRejectTargetPaper} rejectMessageDraft={rejectMessageDraft} setRejectMessageDraft={setRejectMessageDraft} handleConfirmRejectPaper={handleConfirmRejectPaper} />
+        <PaperPreviewModal previewPaper={previewPaper} setPreviewPaper={setPreviewPaper} step={step} schoolId={schoolId} paperReplyDraft={paperReplyDraft} setPaperReplyDraft={setPaperReplyDraft} handleSendPaperMessage={handleSendPaperMessage} paperMessageSaving={paperMessageSaving} paperMessageError={paperMessageError} paperMessageSuccess={paperMessageSuccess} />
+        <RejectPaperModal rejectTargetPaper={rejectTargetPaper} setRejectTargetPaper={setRejectTargetPaper} rejectMessageDraft={rejectMessageDraft} setRejectMessageDraft={setRejectMessageDraft} handleConfirmRejectPaper={handleConfirmRejectPaper} paperMessageSaving={paperMessageSaving} rejectPaperError={rejectPaperError} />
         <aside className={`lti-sidebar w-64 shrink-0 bg-white shadow-sm flex-col border-r border-gray-200 ${sidebarCollapsed?'hidden':'flex'}`}>
           <div className="h-16 flex items-center px-6 border-b border-gray-200 justify-between">
             <div className="flex items-center gap-2">
@@ -1720,7 +1927,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               </div>
                               <div className="flex items-center gap-2 whitespace-nowrap">
                                 <button
-                                  onClick={() => setPreviewPaper(paper)}
+                                  onClick={() => openPaperPreview(paper)}
                                   className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg transition-colors flex items-center gap-1"
                                 >
                                   <Eye className="w-3.5 h-3.5" /> 中身を確認
@@ -1732,7 +1939,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   承認して掲載
                                 </button>
                                 <button
-                                  onClick={() => setRejectTargetPaper(paper)}
+                                  onClick={() => openRejectPaper(paper)}
                                   className="px-3.5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg transition-colors"
                                 >
                                   差し戻し
@@ -1759,19 +1966,21 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   </div>
 
                   {contestMessage && (
-                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
+                    <div role="status" className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
                       <Check className="w-4 h-4" /> {contestMessage}
                     </div>
                   )}
+                  {contestError && <p role="alert" className="p-3.5 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">{contestError}</p>}
 
                   {/* コンテスト投稿フォーム */}
                   <form onSubmit={handleCreateContest} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                    <fieldset disabled={contestSaving} className="space-y-4">
                     <div className="flex items-center justify-between border-b pb-2">
                       <h3 className="font-bold text-sm text-gray-900">
                         {editingContestId !== null ? '学会・コンテストの編集（再公開）' : '新規学会・コンテストの投稿'}
                       </h3>
                       {editingContestId !== null && (
-                        <button type="button" onClick={resetContestForm} className="text-xs font-bold text-gray-400 hover:text-gray-600">
+                        <button type="button" onClick={() => { if (!contestPending.current) resetContestForm(); }} className="text-xs font-bold text-gray-400 hover:text-gray-600">
                           編集をやめて新規作成に戻る
                         </button>
                       )}
@@ -1783,6 +1992,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <input
                           type="text"
                           value={newContestTitle}
+                          aria-label="大会・学会タイトル"
                           onChange={(e) => setNewContestTitle(e.target.value)}
                           placeholder="例: 全国高校生環境サミット 2026"
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
@@ -1795,6 +2005,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <input
                           type="text"
                           value={newContestCategory}
+                          aria-label="カテゴリ・分野"
                           onChange={(e) => setNewContestCategory(e.target.value)}
                           placeholder="例: 環境科学 / ビジネス / AI"
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
@@ -1809,6 +2020,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <input
                           type="text"
                           value={newContestDate}
+                          aria-label="開催日・締切日テキスト"
                           onChange={(e) => setNewContestDate(e.target.value)}
                           placeholder="例: 2026/08/31 締切"
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
@@ -1820,6 +2032,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <input
                           type="date"
                           value={newContestDeadlineDate}
+                          aria-label="締切日"
                           onChange={(e) => setNewContestDeadlineDate(e.target.value)}
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
                         />
@@ -1831,6 +2044,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <label className="text-xs font-bold text-gray-700">詳細説明・概要</label>
                       <textarea
                         value={newContestDesc}
+                        aria-label="詳細説明・概要"
                         onChange={(e) => setNewContestDesc(e.target.value)}
                         placeholder="コンテストの概要、応募資格、賞品、提出方法などを入力してください。"
                         rows={3}
@@ -1843,6 +2057,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <input
                         type="url"
                         value={newContestUrl}
+                        aria-label="公式・申込URL"
                         onChange={(e) => setNewContestUrl(e.target.value)}
                         placeholder="https://..."
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
@@ -1854,6 +2069,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <input
                         type="file"
                         accept=".pdf,application/pdf"
+                        ref={contestFileInput}
+                        aria-label="パンフレットPDF"
                         onChange={(e) => setNewContestBrochureFile(e.target.files?.[0] || null)}
                         className="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                       />
@@ -1930,8 +2147,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       type="submit"
                       className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center gap-2"
                     >
-                      <Trophy className="w-4 h-4" /> {editingContestId !== null ? 'この内容で更新して再公開する' : '学会・コンテスト情報を配信する'}
+                      <Trophy className="w-4 h-4" /> {contestSaving ? '保存しています…' : editingContestId !== null ? 'この内容で更新して再公開する' : '学会・コンテスト情報を配信する'}
                     </button>
+                    </fieldset>
                   </form>
 
                   {/* 配信中のコンテスト一覧 */}
@@ -1944,8 +2162,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700"><Globe className="h-3.5 w-3.5" /> 全校公開</span>
                           : <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700"><LockKeyhole className="h-3.5 w-3.5" /> 限定公開: {c.targetSchoolIds?.join(', ')}</span>;
                         const actions = <span className="ml-auto inline-flex items-center gap-1">
-                          <button onClick={() => handleStartEditContest(c)} className="rounded-lg p-2 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600" title="編集して再公開"><Edit3 className="h-4 w-4" /></button>
-                          <button onClick={() => handleDeleteContest(c.id)} className="rounded-lg p-2 text-gray-400 hover:bg-rose-50 hover:text-rose-600" title="削除"><Trash2 className="h-4 w-4" /></button>
+                          <button type="button" disabled={contestSaving} onClick={() => handleStartEditContest(c)} className="rounded-lg p-2 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600" title="編集して再公開" aria-label={`${c.title}を編集して再公開`}><Edit3 className="h-4 w-4" /></button>
+                          <button type="button" disabled={contestSaving} onClick={() => void handleDeleteContest(c.id)} className="rounded-lg p-2 text-gray-400 hover:bg-rose-50 hover:text-rose-600" title="削除" aria-label={`${c.title}を削除`}><Trash2 className="h-4 w-4" /></button>
                         </span>;
                         return <ContestCard key={c.id} contest={c} expired={expired} audience={audience} actions={actions} />;
                       })}
@@ -2019,7 +2237,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 </td>
                                 <td className="py-3.5 px-6 text-right space-x-1.5">
                                   <button 
-                                    onClick={() => setPreviewPaper(paper)} 
+                                    onClick={() => openPaperPreview(paper)}
                                     className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg"
                                     title="論文の中身を確認"
                                   >
@@ -2028,7 +2246,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   {paper.status === '承認待ち' && (
                                     <>
                                       <button onClick={() => handleApprovePaper(paper.id)} className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm">承認</button>
-                                      <button onClick={() => setRejectTargetPaper(paper)} className="px-2.5 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg">差し戻し</button>
+                                      <button onClick={() => openRejectPaper(paper)} className="px-2.5 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg">差し戻し</button>
                                     </>
                                   )}
                                   {paper.status === '公開中' && <button onClick={() => handleApprovePaper(paper.id)} className="px-2.5 py-1.5 bg-violet-50 text-violet-700 font-bold rounded-lg border border-violet-200">AI評価・参考情報を編集</button>}
@@ -2037,7 +2255,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                       <button onClick={() => handleApprovePaper(paper.id)} className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg border border-emerald-200">
                                         再公開
                                       </button>
-                                      <button onClick={() => setRejectTargetPaper(paper)} className="px-2.5 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg">
+                                      <button onClick={() => openRejectPaper(paper)} className="px-2.5 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg">
                                         差し戻し
                                       </button>
                                     </>
@@ -2116,7 +2334,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 <td className="py-3.5 px-6 text-gray-600">{paper.views}</td>
                                 <td className="py-3.5 px-6 text-right space-x-1.5">
                                   <button 
-                                    onClick={() => setPreviewPaper(paper)} 
+                                    onClick={() => openPaperPreview(paper)}
                                     className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg"
                                   >
                                     <Eye className="w-3.5 h-3.5 inline" /> 確認
@@ -2367,15 +2585,19 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   </div>
 
                   {materialMessage && (
-                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
+                    <div role="status" className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
                       <Check className="w-4 h-4" /> {materialMessage}
                     </div>
                   )}
+                  {materialError && <p role="alert" className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-sm rounded-xl">{materialError}</p>}
+                  {materialSaving && <p role="status" className="text-sm text-indigo-700">教材の変更を保存中です。完了するまでお待ちください。</p>}
 
                   <form onSubmit={handleUploadMaterial} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                    <fieldset disabled={materialSaving || materialReadingImages} className="space-y-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-700">対象の学校</label>
                       <select
+                        aria-label="教材の配信先の学校"
                         value={materialSchoolId}
                         onChange={(e) => setMaterialSchoolId(e.target.value)}
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-mono"
@@ -2391,6 +2613,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <input
                         type="text"
                         value={newMaterialTitle}
+                        aria-label="教材タイトル"
                         onChange={(e) => setNewMaterialTitle(e.target.value)}
                         placeholder="例: ○○高校 探究テーマ設定ガイド"
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
@@ -2402,6 +2625,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <label className="text-xs font-bold text-gray-700">説明・補足</label>
                       <textarea
                         value={newMaterialDesc}
+                        aria-label="教材の説明"
                         onChange={(e) => setNewMaterialDesc(e.target.value)}
                         placeholder="教材の内容や使い方を記入してください。"
                         rows={3}
@@ -2418,6 +2642,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <div className="border-2 border-dashed border-gray-300 hover:border-indigo-400 rounded-xl p-5 text-center bg-gray-50 transition-colors relative cursor-pointer">
                         <input
                           type="file"
+                          aria-label="教材の画像を追加"
                           accept="image/*"
                           onChange={(e) => {
                             handleAddMaterialSlideImage(e.target.files?.[0] || null);
@@ -2431,6 +2656,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           <p className="text-xs text-gray-400">追加した順にスライドとして並びます。複数回選択して枚数を増やせます。</p>
                         </div>
                       </div>
+                      {materialReadingImages && <p role="status" className="text-xs text-indigo-700">画像を読み込み中です…</p>}
 
                       {draftSlides.length > 0 && (
                         <div className="space-y-2 pt-2">
@@ -2442,6 +2668,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 <input
                                   type="text"
                                   value={slide.caption}
+                                  aria-label={`スライド${idx + 1}のキャプション`}
                                   onChange={(e) => updateDraftSlideCaption(slide.id, e.target.value)}
                                   placeholder="このスライドのキャプション（任意）"
                                   className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
@@ -2466,11 +2693,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                     <button
                       type="submit"
-                      disabled={!newMaterialTitle.trim() || draftSlides.length === 0}
+                      disabled={materialSaving || materialReadingImages || !materialSchoolId || !newMaterialTitle.trim() || draftSlides.length === 0}
                       className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
                     >
-                      この学校に教材をアップロードする
+                      {materialSaving ? '教材を保存中…' : 'この学校に教材を配信する'}
                     </button>
+                    </fieldset>
                   </form>
 
                   <div className="space-y-3">
@@ -2495,7 +2723,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               </div>
                             </div>
                             <button
-                              onClick={() => handleDeleteMaterial(mat.id)}
+                              type="button"
+                              aria-label={`${mat.title}を削除`}
+                              disabled={materialSaving}
+                              onClick={() => void handleDeleteMaterial(mat.id)}
                               className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -2517,18 +2748,20 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   </div>
 
                   {noticeMessage && (
-                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
+                    <div role="status" className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
                       <Check className="w-4 h-4" /> {noticeMessage}
                     </div>
                   )}
+                  {noticeError && <p role="alert" className="p-3.5 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">{noticeError}</p>}
 
                   <form onSubmit={handleSaveNotice} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                    <fieldset disabled={noticeSaving} className="space-y-4">
                     <div className="flex items-center justify-between border-b pb-2">
                       <h3 className="font-bold text-sm text-gray-900">
                         {editingNoticeId !== null ? 'お知らせの編集' : '新規お知らせの作成'}
                       </h3>
                       {editingNoticeId !== null && (
-                        <button type="button" onClick={resetNoticeForm} className="text-xs font-bold text-gray-400 hover:text-gray-600">
+                        <button type="button" onClick={() => { if (!noticePending.current) resetNoticeForm(); }} className="text-xs font-bold text-gray-400 hover:text-gray-600">
                           編集をやめて新規作成に戻る
                         </button>
                       )}
@@ -2539,6 +2772,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <input
                         type="text"
                         value={newNoticeTitle}
+                        aria-label="お知らせタイトル"
                         onChange={(e) => setNewNoticeTitle(e.target.value)}
                         placeholder="例: 夏季LTI講評会エントリー受付開始のお知らせ"
                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
@@ -2550,6 +2784,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <label className="text-xs font-bold text-gray-700">内容</label>
                       <textarea
                         value={newNoticeContent}
+                        aria-label="お知らせ内容"
                         onChange={(e) => setNewNoticeContent(e.target.value)}
                         placeholder="お知らせの本文を入力してください。"
                         rows={4}
@@ -2621,8 +2856,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       type="submit"
                       className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center gap-2"
                     >
-                      <Send className="w-4 h-4" /> {editingNoticeId !== null ? 'この内容で更新する' : 'お知らせを配信する'}
+                      <Send className="w-4 h-4" /> {noticeSaving ? '保存しています…' : editingNoticeId !== null ? 'この内容で更新する' : 'お知らせを配信する'}
                     </button>
+                    </fieldset>
                   </form>
 
                   <div className="space-y-3">
@@ -2645,16 +2881,20 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             </div>
                             <div className="flex items-center gap-1.5">
                               <button
+                                type="button" disabled={noticeSaving}
                                 onClick={() => handleStartEditNotice(n)}
                                 className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                 title="編集"
+                                aria-label={`${n.title}を編集`}
                               >
                                 <Edit3 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleDeleteNotice(n.id)}
+                                type="button" disabled={noticeSaving}
+                                onClick={() => void handleDeleteNotice(n.id)}
                                 className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                 title="削除"
+                                aria-label={`${n.title}を削除`}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -2666,6 +2906,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   </div>
                 </div>
 
+              ) : ['設定', '権限管理', 'ヘルプ'].includes(ltiCurrentTab) ? (
+                <AdminSystemGuide tab={ltiCurrentTab} onNavigate={setLtiCurrentTab} />
               ) : (
                 <div className="bg-white p-12 rounded-2xl border border-gray-200 shadow-sm text-center space-y-3">
                   <h2 className="text-lg font-bold text-gray-900">{ltiCurrentTab} 管理画面</h2>
@@ -3213,7 +3455,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
     return (
       <div className="lti-shell min-h-screen bg-gray-50 flex font-sans text-gray-900">
-        <PaperPreviewModal previewPaper={previewPaper} setPreviewPaper={setPreviewPaper} step={step} schoolId={schoolId} paperReplyDraft={paperReplyDraft} setPaperReplyDraft={setPaperReplyDraft} handleSendPaperMessage={handleSendPaperMessage} />
+        <PaperPreviewModal previewPaper={previewPaper} setPreviewPaper={setPreviewPaper} step={step} schoolId={schoolId} paperReplyDraft={paperReplyDraft} setPaperReplyDraft={setPaperReplyDraft} handleSendPaperMessage={handleSendPaperMessage} paperMessageSaving={paperMessageSaving} paperMessageError={paperMessageError} paperMessageSuccess={paperMessageSuccess} />
         <PdfPreviewModal previewPdfModalData={previewPdfModalData} setPreviewPdfModalData={setPreviewPdfModalData} />
         <MaterialPreviewModal previewMaterialModalData={previewMaterialModalData} setPreviewMaterialModalData={setPreviewMaterialModalData} />
         <aside className={`lti-sidebar w-64 shrink-0 bg-white shadow-sm flex-col border-r border-gray-200 ${sidebarCollapsed?'hidden':'flex'}`}>
@@ -3618,7 +3860,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           </div>
                           <div className="flex items-center gap-2">
                             {paper.status!=='公開中'&&<><button disabled={teacherPaperSubmitting || teacherBatchSubmitting} className="underline" onClick={()=>{if(teacherPaperPending.current)return;teacherPaperDraftId.current=null;setTeacherApplyError('');setTeacherApplyMessage('');setEditingPaper(paper);setTeacherPaperTitle(paper.title);setTeacherPaperAuthor(paper.author);setTeacherPaperAbstract(paper.abstract||'');setTeacherPaperField(paper.field);setTeacherPaperFile(null);}}>修正</button><button disabled={teacherPaperSubmitting || teacherBatchSubmitting} className="text-red-700" onClick={()=>{if(confirm('この公開申請を取り消しますか？'))setPapers(papers.filter(p=>p.id!==paper.id));}}>申請取消</button></>}{paper.status==='公開中'&&<button disabled={paper.withdrawalRequested || teacherPaperSubmitting || teacherBatchSubmitting} className="text-red-700" onClick={()=>{if(confirm('運営へ公開差し止めを申請しますか？'))setPapers(papers.map(p=>p.id===paper.id?{...p,withdrawalRequested:true}:p));}}>{paper.withdrawalRequested?'差し止め申請済み':'差し止め申請'}</button>}
-                            <button onClick={() => setPreviewPaper(paper)} className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg text-xs">
+                            <button onClick={() => openPaperPreview(paper)} className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg text-xs">
                               中身を確認
                             </button>
                             <span className={`px-2.5 py-1 rounded-full font-bold text-xs ${
@@ -4369,7 +4611,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
     return (
       <div className="lti-shell min-h-screen bg-gray-50 flex font-sans text-gray-900">
-        <PaperPreviewModal previewPaper={previewPaper} setPreviewPaper={setPreviewPaper} step={step} schoolId={schoolId} paperReplyDraft={paperReplyDraft} setPaperReplyDraft={setPaperReplyDraft} handleSendPaperMessage={handleSendPaperMessage} />
+        <PaperPreviewModal previewPaper={previewPaper} setPreviewPaper={setPreviewPaper} step={step} schoolId={schoolId} paperReplyDraft={paperReplyDraft} setPaperReplyDraft={setPaperReplyDraft} handleSendPaperMessage={handleSendPaperMessage} paperMessageSaving={paperMessageSaving} paperMessageError={paperMessageError} paperMessageSuccess={paperMessageSuccess} />
         <PdfPreviewModal previewPdfModalData={previewPdfModalData} setPreviewPdfModalData={setPreviewPdfModalData} />
         <MaterialPreviewModal previewMaterialModalData={previewMaterialModalData} setPreviewMaterialModalData={setPreviewMaterialModalData} />
         <ResubmitConfirmModal
