@@ -7,9 +7,73 @@ import os
 import re
 import tempfile
 import uuid
+from urllib.error import HTTPError
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 SNAPSHOT_PREFIX = '.lti-snapshots/v1/'
 MAX_MANIFEST_BYTES = 64 * 1024 * 1024
+SOURCE_PROJECT = 'qzowxrmrxyjifoabjryr'
+SOURCE_ENDPOINT = f'https://{SOURCE_PROJECT}.storage.supabase.co/storage/v1/s3'
+SOURCE_BUCKET = 'lti-documents'
+BACKUP_PROJECT = 'ozmulwqzybhiekmolvyk'
+BACKUP_ENDPOINT = f'https://{BACKUP_PROJECT}.storage.supabase.co/storage/v1/s3'
+BACKUP_BUCKET = 'lti-production-backup'
+
+
+def validate_backup_configuration(source_endpoint, source_bucket, backup_endpoint, backup_bucket):
+    if (source_endpoint, source_bucket) != (SOURCE_ENDPOINT, SOURCE_BUCKET):
+        raise ValueError('refusing an unexpected production source')
+    if (backup_endpoint, backup_bucket) != (BACKUP_ENDPOINT, BACKUP_BUCKET):
+        raise ValueError('refusing an unexpected backup destination')
+
+
+def public_access_blocked(bucket, key):
+    # A denied unsigned S3 request alone cannot establish that a bucket is private.
+    # Probe the public Storage route for an object already verified through S3.
+    url = (f'https://{BACKUP_PROJECT}.supabase.co/storage/v1/object/public/'
+           f'{quote(bucket, safe="")}/{quote(key, safe="/")}')
+    try:
+        with urlopen(Request(url, method='HEAD'), timeout=30):
+            return False
+    except HTTPError as exc:
+        return exc.code in (400, 401, 403, 404)
+
+
+def prepare_backup_destination(client, endpoint, bucket, access_probe=None):
+    """Create only the approved bucket; prove privacy before copying any source data."""
+    if (endpoint, bucket) != (BACKUP_ENDPOINT, BACKUP_BUCKET):
+        raise ValueError('refusing an unexpected backup destination')
+    created = False
+    try:
+        client.head_bucket(Bucket=bucket)
+    except Exception as exc:
+        response = getattr(exc, 'response', {})
+        error = response.get('Error', {}) if isinstance(response, dict) else {}
+        metadata = response.get('ResponseMetadata', {}) if isinstance(response, dict) else {}
+        code = error.get('Code') if isinstance(error, dict) else None
+        status = metadata.get('HTTPStatusCode') if isinstance(metadata, dict) else None
+        if not ((code in ('NoSuchBucket', '404', 'NotFound') and status in (None, 404)) or
+                (code in (None, '') and status == 404)):
+            raise
+        # Supabase CreateBucket defaults to private; ACL arguments are unsupported.
+        client.create_bucket(Bucket=bucket)
+        created = True
+        client.head_bucket(Bucket=bucket)
+    key = SNAPSHOT_PREFIX + 'privacy-checks/' + uuid.uuid4().hex
+    existing = optional_object(client, bucket, key)
+    if existing is not None:
+        existing['Body'].close()
+        raise ValueError('privacy canary already exists; refusing overwrite')
+    data = b'LTI backup privacy check. Synthetic non-sensitive content.\n'
+    client.upload_fileobj(io.BytesIO(data), bucket, key, ExtraArgs={
+        'ContentType': 'text/plain', 'CacheControl': 'no-store'})
+    if digest_object(client.get_object(Bucket=bucket, Key=key)) != (len(data), hashlib.sha256(data).hexdigest()):
+        raise RuntimeError('privacy canary verification failed')
+    if not (access_probe or public_access_blocked)(bucket, key):
+        raise RuntimeError('backup destination is publicly accessible')
+    # Append-only, even on failure. Never delete an existing bucket or canary.
+    return {'backup_bucket_created': created, 'private_access_verified': True}
 
 
 def validate_snapshot_id(snapshot_id):
@@ -256,7 +320,7 @@ def backup(source, dest, source_bucket, backup_bucket, snapshot_id=None):
 def main():
     import boto3
     from botocore.config import Config
-    required = ['PROD_ACCESS_KEY_ID', 'PROD_SECRET_ACCESS_KEY', 'STAGING_ACCESS_KEY_ID', 'STAGING_SECRET_ACCESS_KEY']
+    required = ['PROD_ACCESS_KEY_ID', 'PROD_SECRET_ACCESS_KEY', 'BACKUP_ACCESS_KEY_ID', 'BACKUP_SECRET_ACCESS_KEY']
     if any(not os.environ.get(key) for key in required):
         raise SystemExit('Storage backup credentials are incomplete; nothing copied')
     # Match the already-used restore client's S3 compatibility settings. These
@@ -272,9 +336,18 @@ def main():
                             aws_secret_access_key=os.environ[prefix + '_SECRET_ACCESS_KEY'],
                             region_name=os.environ.get(region_key) or os.environ.get('AWS_REGION') or 'ap-southeast-1',
                             config=cfg)
-    result = backup(client('PROD', 'PROD_ENDPOINT', 'PROD_AWS_REGION'),
-                    client('STAGING', 'STAGING_ENDPOINT', 'TEST_AWS_REGION'),
-                    os.environ['SOURCE_BUCKET'], os.environ['BACKUP_BUCKET'], os.environ.get('BACKUP_SNAPSHOT_ID'))
+    try:
+        validate_backup_configuration(os.environ.get('PROD_ENDPOINT'), os.environ.get('SOURCE_BUCKET'),
+                                      os.environ.get('BACKUP_ENDPOINT'), os.environ.get('BACKUP_BUCKET'))
+        source = client('PROD', 'PROD_ENDPOINT', 'PROD_AWS_REGION')
+        dest = client('BACKUP', 'BACKUP_ENDPOINT', 'BACKUP_AWS_REGION')
+        preflight = prepare_backup_destination(dest, BACKUP_ENDPOINT, BACKUP_BUCKET)
+        print(json.dumps(preflight, sort_keys=True), flush=True)
+    except Exception as exc:
+        print('::error::Storage destination preflight failed ' + json.dumps(
+            failure_details(exc, 'prepare_backup_destination', BACKUP_BUCKET), sort_keys=True), flush=True)
+        raise SystemExit(1) from None
+    result = backup(source, dest, SOURCE_BUCKET, BACKUP_BUCKET, os.environ.get('BACKUP_SNAPSHOT_ID'))
     if result['failed'] or not result['completed']:
         raise SystemExit(1)
 

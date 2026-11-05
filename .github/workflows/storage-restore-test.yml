@@ -3,12 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       snapshot_id:
-        description: Completed snapshot ID (empty selects the legacy backup)
-        required: false
-        default: ''
+        description: Completed snapshot ID in the backup project
+        required: true
         type: string
       expected_files:
-        description: Optional expected count (snapshot manifest count or legacy 539 when empty)
+        description: Optional expected count (uses snapshot manifest count when empty)
         required: false
         default: ''
         type: string
@@ -32,8 +31,8 @@ jobs:
         run: python -m pip install --quiet boto3==1.43.110 PyMuPDF==1.28.2
       - name: Restore, verify contents and document opening, then remove test copies
         env:
-          TEST_ACCESS_KEY_ID: ${{ secrets.TEST_S3_ACCESS_KEY_ID }}
-          TEST_SECRET_ACCESS_KEY: ${{ secrets.TEST_S3_SECRET_ACCESS_KEY }}
+          BACKUP_ACCESS_KEY_ID: ${{ secrets.PROD_S3_ACCESS_KEY_ID }}
+          BACKUP_SECRET_ACCESS_KEY: ${{ secrets.PROD_S3_SECRET_ACCESS_KEY }}
           EXPECTED_FILES: ${{ inputs.expected_files }}
           RESTORE_SNAPSHOT_ID: ${{ inputs.snapshot_id }}
         run: python scripts/restore-storage-test.py

@@ -24,4 +24,5 @@ jobs:
       - run: npm ci --prefix tests/backend-security
       - run: npm test --prefix tests/backend-security
       - run: node tests/backend-security/support.mjs
+      - run: node tests/backend-security/backup-destination.mjs
       - run: npm run build
