@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from './client';
+import { searchFailureMessage } from './search-error';
 import { mergePapers, japaneseRank, paperLanguageLabel, type Paper } from './supabase/functions/paper-search/search';
 export function ScholarlySearch({savedKeys,onSave}:{savedKeys:string[];onSave:(p:Paper)=>void}){
  const [query,setQuery]=useState('');const [activeQuery,setActiveQuery]=useState('');
@@ -13,7 +14,7 @@ export function ScholarlySearch({savedKeys,onSave}:{savedKeys:string[];onSave:(p
   if(nextPage===0){setPapers([]);setPage(-1);setHasMore(false);setActiveQuery(q.trim());}
   try{
    const {data,error:failure}=await supabase.functions.invoke('paper-search',{body:{query:q.trim(),page:nextPage},signal:controller.signal});
-   if(failure){let message='検索先に接続できませんでした。再検索してください。';try{const body=await failure.context?.json();message=body?.error||body?.warnings?.join(' / ')||message;}catch{}throw new Error(message);}
+   if(failure)throw new Error(await searchFailureMessage(failure));
    if(!Array.isArray(data?.items))throw new Error('検索結果を読み取れませんでした。');
    if(request.current!==controller)return;
    setPapers(old=>nextPage===0?data.items:mergePapers([[...old,...data.items]]));setWarnings(data.warnings||[]);setPage(nextPage);setHasMore(data.hasMore&&nextPage<49);

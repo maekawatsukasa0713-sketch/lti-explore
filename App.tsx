@@ -11,6 +11,7 @@ import { ResearchThemeFinder } from './ResearchThemeFinder';
 import { ReviewPanels } from './ReviewPanels';
 import { analysisInput, invokeResearchAI } from './research-ai';
 import { ScholarlySearch } from './ScholarlySearch';
+import { PortalSearch } from './PortalSearch';
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import {PublishedFields,AdminAnalytics} from './analytics';
@@ -245,15 +246,21 @@ type AiReviewItem = {
   paperTitle: string;
   status: 'processing' | 'done' | 'error';
   error?: string;
+  errorCode?: string;
+  requestId?: string;
   result: AiReviewResult;
   studentId: string;
   note: string;
   sent: boolean;
+  sending?: boolean;
+  sendError?: string;
+  sendNotice?: string;
 };
 
 // 教員からAI添削結果を受け取った生徒宛メッセージ（送信済み・生徒側に表示される）
 type StudentFeedbackMessage = {
   id: number;
+  source?: 'manual' | 'ai';
   assignmentId?: string;
   schoolId: string;
   studentId: string;
@@ -264,6 +271,14 @@ type StudentFeedbackMessage = {
   note: string;
   sentAt: string;
   read: boolean;
+};
+
+const reviewFailureDetails = (error: unknown): Pick<AiReviewItem, 'errorCode' | 'requestId'> => {
+  const failure = error as {code?: unknown; requestId?: unknown} | null;
+  return {
+    errorCode: typeof failure?.code === 'string' && /^[a-z0-9_]{1,80}$/.test(failure.code) ? failure.code : undefined,
+    requestId: typeof failure?.requestId === 'string' && /^req[_-][A-Za-z0-9_-]{1,120}$/.test(failure.requestId) ? failure.requestId : undefined,
+  };
 };
 
 // ----------------------------------------
@@ -641,7 +656,7 @@ const PdfPreviewModal = ({
         <div className="flex items-center justify-between border-b pb-3">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-emerald-600" />
-            <h3 className="text-base font-bold text-gray-900">提出PDFのプレビュー確認</h3>
+            <h3 className="text-base font-bold text-gray-900">提出ファイルのプレビュー確認</h3>
           </div>
           <button 
             onClick={() => setPreviewPdfModalData(null)}
@@ -656,11 +671,11 @@ const PdfPreviewModal = ({
         </div>
         <div className="border border-gray-300 rounded-xl bg-gray-100 p-6 space-y-3 max-h-[75vh] overflow-auto">
           <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center font-bold text-xl shadow-sm">
-            PDF
+            {/\.docx$/i.test(previewPdfModalData.fileName) ? 'Word' : 'PDF'}
           </div>
-          <PdfView path={previewPdfModalData.storagePath} />
+          <PdfView path={previewPdfModalData.storagePath} label={previewPdfModalData.fileName} />
           <p className="font-bold text-sm text-gray-800">{previewPdfModalData.fileName}</p>
-          <p className="text-xs text-gray-500 max-w-md">PDFが添付されている場合は、認証後に読み込んで表示します。</p>
+          <p className="text-xs text-gray-500 max-w-md">添付ファイルは、認証後に読み込んで表示します。</p>
         </div>
         <div className="pt-2 flex justify-end">
           <button
@@ -682,21 +697,12 @@ const MaterialPreviewModal = ({previewMaterialModalData:mat,setPreviewMaterialMo
 };
 
 const ResubmitConfirmModal = ({
-  showResubmitConfirmModal, setShowResubmitConfirmModal, selectedAssignmentId, assignments, setAssignments,
-  currentStudentId, setStudentSubmissionText, setStudentSubmissionFile, setStudentSubmitSuccessMsg
+  showResubmitConfirmModal, setShowResubmitConfirmModal, onEdit
 }: {
   showResubmitConfirmModal: boolean;
   setShowResubmitConfirmModal: (v: boolean) => void;
-  selectedAssignmentId: number | null;
-  assignments: AssignmentData[];
-  setAssignments: (v: AssignmentData[]) => Promise<SaveResult>;
-  currentStudentId: string;
-  setStudentSubmissionText: (v: string) => void;
-  setStudentSubmissionFile: (v: File | null) => void;
-  setStudentSubmitSuccessMsg: (v: string) => void;
+  onEdit: () => void;
 }) => {
-  const pending = useRef(false);
-  const [saving, setSaving] = useState(false);
   if (!showResubmitConfirmModal) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -707,44 +713,24 @@ const ResubmitConfirmModal = ({
         </div>
         
         <p className="text-sm font-bold text-gray-700 leading-relaxed bg-amber-50 p-4 rounded-xl border border-amber-200">
-          課題を再提出しますか、現在提出中の課題は削除されます
+          提出内容を編集します。新しい内容の保存が完了するまで、現在の提出物はそのまま残ります。
         </p>
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <button
-            disabled={saving}
             onClick={() => setShowResubmitConfirmModal(false)}
             className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-colors"
           >
             戻る
           </button>
           <button
-            disabled={saving}
-            onClick={async () => {
-              if (pending.current) return;
-              pending.current = true;
-              setSaving(true);
-              try {
-              if (selectedAssignmentId !== null) {
-                const result = await setAssignments(assignments.map(a => {
-                  if (a.id === selectedAssignmentId && a.submissions[currentStudentId]) {
-                    const newSubmissions = { ...a.submissions };
-                    delete newSubmissions[currentStudentId];
-                    return { ...a, submissions: newSubmissions };
-                  }
-                  return a;
-                }));
-                if (!result.ok) return;
-                setStudentSubmissionText('');
-                setStudentSubmissionFile(null);
-                setStudentSubmitSuccessMsg(result.refreshed ? '前回の提出をクリアしました。新しい内容を入力して提出してください。' : '前回の提出をクリアしました。保存済みデータを再読み込みしてください。');
-              }
+            onClick={() => {
+              onEdit();
               setShowResubmitConfirmModal(false);
-              } finally { pending.current = false; setSaving(false); }
             }}
             className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors shadow-sm"
           >
-            {saving ? '処理中…' : '承認する'}
+            編集を始める
           </button>
         </div>
       </div>
@@ -836,6 +822,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   // ※現時点ではフロントのみ。fetchContinuationSuggestions は /api/continuation-suggestions
   //   （Supabase移行時に実装予定）を叩く形で用意してあるので、バックエンド未実装の間はエラー表示になる。
   const [detailPaper, setDetailPaper] = useState<PublicPaper | null>(null);
+  const [librarySearch, setLibrarySearch] = useState({query:'',revision:0});
+  const searchPublicPapers = (query:string) => {
+    setDetailPaper(null);
+    setLibrarySearch(previous=>({query,revision:previous.revision+1}));
+    setCurrentTab('みんなの論文');
+  };
   const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
@@ -861,13 +853,13 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   // LocalStorage連動の編集可能データステート
   // ----------------------------------------
   const [ltiAdminUsers, setLtiAdminUsers] = useCloudList<LtiAdminUser[]>('lti_admin_users', DEFAULT_LTI_ADMIN_USERS);
-  const [papers, setPapers] = useCloudList<PublicPaper[]>('lti_papers', DEFAULT_PAPERS);
+  const [papers, setPapers, savePapers] = useCloudList<PublicPaper[]>('lti_papers', DEFAULT_PAPERS);
   const [assignments, setAssignments, saveAssignments] = useCloudList<AssignmentData[]>('lti_assignments', DEFAULT_ASSIGNMENTS);
   const [teachingMaterials, setTeachingMaterials] = useCloudList<TeachingMaterial[]>('lti_teaching_materials', DEFAULT_TEACHING_MATERIALS);
   const [teachersList, setTeachersList] = useCloudList('lti_teachers_list', generateInitialTeachers());
   const [studentsList, setStudentsList] = useCloudList('lti_students_list', generateInitialStudents());
   // AI添削の結果を送信した、生徒宛メッセージの一覧（教員・生徒どちらの画面からも参照する）
-  const [studentFeedbackMessages, setStudentFeedbackMessages] = useCloudList<StudentFeedbackMessage[]>('lti_student_feedback_messages', []);
+  const [studentFeedbackMessages, setStudentFeedbackMessages, saveStudentFeedbackMessages] = useCloudList<StudentFeedbackMessage[]>('lti_student_feedback_messages', []);
   // サイドバーのタブ並び順（教員・生徒それぞれ、ドラッグ&ドロップで並び替えた結果を保存）
   const [teacherMenuOrder, setTeacherMenuOrder] = useLocalStorage<string[]>(`lti_teacher_menu_order:${profile.id}`, []);
   const [studentMenuOrder, setStudentMenuOrder] = useLocalStorage<string[]>(`lti_student_menu_order:${profile.id}`, []);
@@ -1214,10 +1206,23 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [teacherBatchPaperFiles, setTeacherBatchPaperFiles] = useState<File[]>([]);
   const [teacherBatchSubmitting, setTeacherBatchSubmitting] = useState(false);
   const [teacherBatchProgress, setTeacherBatchProgress] = useState<Record<string, number>>({});
+  const [teacherPaperSubmitting, setTeacherPaperSubmitting] = useState(false);
+  const teacherPaperPending = useRef(false);
+  const teacherPaperDraftId = useRef<number | null>(null);
+  const uploadedTeacherPapers = useRef(new WeakMap<File, string>());
+  const teacherBatchDraftIds = useRef(new WeakMap<File, number>());
+  const teacherRecordId = useRef(0);
+  const nextTeacherRecordId = () => (teacherRecordId.current = Math.max(Date.now(), teacherRecordId.current + 1));
 
   // AI添削タブ：ドロップ〜送信前のドラフト一覧（送信するまでは端末内のみで保持）
   const [aiReviewItems, setAiReviewItems] = useState<AiReviewItem[]>([]);
   const [teacherApplyMessage, setTeacherApplyMessage] = useState('');
+  const [teacherApplyError, setTeacherApplyError] = useState('');
+  const feedbackPending = useRef(new Set<string>());
+  const feedbackDraftIds = useRef(new Map<string, number>());
+  const sentAiReviewIds = useRef(new Set<string>());
+  const [manualFeedbackDrafts, setManualFeedbackDrafts] = useState<Record<string, string>>({});
+  const [manualFeedbackStatus, setManualFeedbackStatus] = useState<Record<string, {pending?: boolean; error?: string; success?: string}>>({});
 
   // 教師側：課題管理で選択中の課題ID・生徒絞り込み・開いている提出
   const [progressSelectedAssignId, setProgressSelectedAssignId] = useState<number | null>(null);
@@ -1233,70 +1238,73 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [newAssignAttachment, setNewAssignAttachment] = useState<File | null>(null);
   const [assignmentUploadProgress, setAssignmentUploadProgress] = useState<number | null>(null);
   const [assignMessage, setAssignMessage] = useState('');
+  const [assignError, setAssignError] = useState('');
+  const [assignmentSubmitting, setAssignmentSubmitting] = useState(false);
+  const assignmentPending = useRef(false);
+  const assignmentDraftId = useRef<number | null>(null);
+  const uploadedAssignmentFiles = useRef(new WeakMap<File, string>());
   const [editingAssignmentId, setEditingAssignmentId] = useState<number | null>(null);
 
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
 
   const handleCreateOrUpdateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAssignTitle.trim() || !newAssignDeadline.trim()) return;
-
-    const existing = editingAssignmentId !== null ? assignments.find(a => a.id === editingAssignmentId) : undefined;
-    let attachmentPath = existing?.attachmentPath;
-    let attachmentName = existing?.attachmentName;
-
-    if (newAssignAttachment) {
-      try {
+    const form = e.currentTarget as HTMLFormElement;
+    if (assignmentPending.current || !newAssignTitle.trim() || !newAssignDeadline.trim()) return;
+    assignmentPending.current = true;
+    setAssignmentSubmitting(true);
+    setAssignMessage('');
+    setAssignError('');
+    try {
+      const existing = editingAssignmentId !== null ? assignments.find(a => a.id === editingAssignmentId) : undefined;
+      if (editingAssignmentId !== null && !existing) throw new Error('編集する課題が見つかりません。再読み込みして確認してください。');
+      let attachmentPath = existing?.attachmentPath;
+      let attachmentName = existing?.attachmentName;
+      if (newAssignAttachment) {
         setAssignmentUploadProgress(0);
-        attachmentPath = await uploadPdf(newAssignAttachment, percent => setAssignmentUploadProgress(percent));
-        attachmentName = newAssignAttachment.name;
-      } catch (error) {
-        setAssignmentUploadProgress(null);
-        setAssignMessage((error as Error).message || '添付ファイルをアップロードできませんでした。');
-        return;
-      }
-    }
-
-    if (editingAssignmentId !== null) {
-      setAssignments(assignments.map(a => {
-        if (a.id === editingAssignmentId) {
-          return {
-            ...a,
-            title: newAssignTitle,
-            deadline: newAssignDeadline,
-            description: newAssignDesc || '詳細な説明はありません。',
-            attachmentPath,
-            attachmentName
-          };
+        attachmentPath = uploadedAssignmentFiles.current.get(newAssignAttachment);
+        if (!attachmentPath) {
+          attachmentPath = await uploadPdf(newAssignAttachment, percent => setAssignmentUploadProgress(percent));
+          uploadedAssignmentFiles.current.set(newAssignAttachment, attachmentPath);
         }
-        return a;
-      }));
-      setAssignMessage('課題を編集・再配信しました！');
-      setEditingAssignmentId(null);
-    } else {
-      const newAssignment: AssignmentData = {
-        id: Date.now(),
+        attachmentName = newAssignAttachment.name;
+      }
+      const draft: AssignmentData = {
+        ...(existing || {}),
+        id: existing?.id ?? (assignmentDraftId.current ??= nextTeacherRecordId()),
         title: newAssignTitle,
         deadline: newAssignDeadline,
-        status: '未提出',
+        status: existing?.status || '未提出',
         description: newAssignDesc || '詳細な説明はありません。',
         attachmentPath,
         attachmentName,
-        schoolId: schoolId,
-        submissions: {}
+        schoolId,
+        submissions: existing?.submissions || {},
       };
-      setAssignments([newAssignment, ...assignments]);
-      setAssignMessage('新しい課題を配信しました！');
+      const result = await saveAssignments(existing ? assignments.map(a => a.id === existing.id ? draft : a) : [draft, ...assignments]);
+      if (!result.ok) throw new Error(result.error);
+      setAssignMessage((existing ? '課題を編集・再配信しました。' : '新しい課題を配信しました。') + (result.refreshed ? '' : '保存済みです。再送信せず、画面を再読み込みしてください。'));
+      setEditingAssignmentId(null);
+      assignmentDraftId.current = null;
+      setNewAssignTitle('');
+      setNewAssignDeadline('');
+      setNewAssignDesc('');
+      setNewAssignAttachment(null);
+      form.reset();
+    } catch (error) {
+      setAssignError(`保存を確認できませんでした。入力は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+    } finally {
+      setAssignmentUploadProgress(null);
+      assignmentPending.current = false;
+      setAssignmentSubmitting(false);
     }
-    setNewAssignTitle('');
-    setNewAssignDeadline('');
-    setNewAssignDesc('');
-    setNewAssignAttachment(null);
-    setAssignmentUploadProgress(null);
-    setTimeout(() => setAssignMessage(''), 4000);
   };
 
   const handleEditClick = (assign: AssignmentData) => {
+    if (assignmentPending.current) return;
+    assignmentDraftId.current = null;
+    setAssignError('');
+    setAssignMessage('');
     setEditingAssignmentId(assign.id);
     setNewAssignTitle(assign.title);
     setNewAssignDeadline(assign.deadline.replace(/\//g, '-'));
@@ -1306,16 +1314,31 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     setCurrentTab('課題配信');
   };
 
-  const handleDeleteAssignment = (id: number) => {
+  const handleDeleteAssignment = async (id: number) => {
+    if (assignmentPending.current) return;
     if (confirm('この課題を削除しますか？')) {
-      setAssignments(assignments.filter(a => a.id !== id));
+      assignmentPending.current = true;
+      setAssignmentSubmitting(true);
+      setAssignError('');
+      setAssignMessage('');
+      try {
+      const result = await saveAssignments(assignments.filter(a => a.id !== id));
+      if (!result.ok) throw new Error(result.error);
       if (editingAssignmentId === id) {
+        assignmentDraftId.current = null;
         setEditingAssignmentId(null);
         setNewAssignTitle('');
         setNewAssignDeadline('');
         setNewAssignDesc('');
         setNewAssignAttachment(null);
         setAssignmentUploadProgress(null);
+      }
+      setAssignMessage(result.refreshed ? '課題を削除しました。' : '課題の削除は完了しています。画面を再読み込みしてください。');
+      } catch (error) {
+        setAssignError(error instanceof Error ? error.message : '課題を削除できませんでした。');
+      } finally {
+        assignmentPending.current = false;
+        setAssignmentSubmitting(false);
       }
     }
   };
@@ -1329,11 +1352,13 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [editStudentName, setEditStudentName] = useState(profile.name);
   const [studentProfileMessage, setStudentProfileMessage] = useState('');
 
-  // 生徒側：課題提出用のステート
-  const [studentSubmissionText, setStudentSubmissionText] = useState('');
-  const [studentSubmissionFile, setStudentSubmissionFile] = useState<File | null>(null);
-  const [studentSubmitSuccessMsg, setStudentSubmitSuccessMsg] = useState('');
-  const [studentSubmitErrorMsg, setStudentSubmitErrorMsg] = useState('');
+  // Each assignment owns its draft, attachment and save result. Never share these between cards.
+  type SubmissionDraft = {text:string;file:File|null;success:string;error:string;editing:boolean;removeAttachment:boolean};
+  const [studentDrafts, setStudentDrafts] = useState<Record<string,SubmissionDraft>>({});
+  const emptySubmissionDraft: SubmissionDraft = {text:'',file:null,success:'',error:'',editing:false,removeAttachment:false};
+  const updateStudentDraft = (assignmentId:number, patch:Partial<SubmissionDraft>) => {
+    setStudentDrafts(previous => ({...previous,[assignmentId]:{...emptySubmissionDraft,...previous[assignmentId],...patch}}));
+  };
   const [studentSubmitting, setStudentSubmitting] = useState(false);
   const studentSubmissionPending = useRef(false);
   const uploadedStudentSubmission = useRef<{file:File;assignmentId:number;studentId:string;path:string}|null>(null);
@@ -2896,13 +2921,24 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
     const handleTeacherSubmitPaper = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!teacherPaperTitle.trim()) return;
-
-      let storagePath: string | undefined=editingPaper?.storagePath;
-      try { if (teacherPaperFile) storagePath = await uploadPdf(teacherPaperFile); } catch (error) { setTeacherApplyMessage((error as Error).message); return; }
+      const form = e.currentTarget as HTMLFormElement;
+      if (teacherPaperPending.current || !teacherPaperTitle.trim()) return;
+      teacherPaperPending.current = true;
+      setTeacherPaperSubmitting(true);
+      setTeacherApplyMessage('');
+      setTeacherApplyError('');
+      try {
+      let storagePath: string | undefined = editingPaper?.storagePath;
+      if (teacherPaperFile) {
+        storagePath = uploadedTeacherPapers.current.get(teacherPaperFile);
+        if (!storagePath) {
+          storagePath = await uploadPdf(teacherPaperFile);
+          uploadedTeacherPapers.current.set(teacherPaperFile, storagePath);
+        }
+      }
       const newPaper: PublicPaper = {
         storagePath,
-        id: Date.now(),
+        id: editingPaper?.id ?? (teacherPaperDraftId.current ??= nextTeacherRecordId()),
         title: teacherPaperTitle,
         schoolName: cloud.schools.find(s => s.id === schoolId)?.name || schoolId,
         schoolId: schoolId,
@@ -2918,28 +2954,37 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
         abstract: teacherPaperAbstract.trim()
       };
 
-      setPapers(editingPaper?papers.map(p=>p.id===editingPaper.id?{...p,...newPaper,id:p.id,storagePath:storagePath||p.storagePath,fileName:teacherPaperFile?.name||p.fileName}:p):[newPaper,...papers]);
+      const result = await savePapers(editingPaper?papers.map(p=>p.id===editingPaper.id?{...p,...newPaper,id:p.id,storagePath:storagePath||p.storagePath,fileName:teacherPaperFile?.name||p.fileName}:p):[newPaper,...papers]);
+      if (!result.ok) throw new Error(result.error);
       setEditingPaper(null);
-      setTeacherApplyMessage('LTIへ論文の公開申請を送信しました！事務局の審査完了までお待ちください。');
+      teacherPaperDraftId.current = null;
+      setTeacherApplyMessage('LTIへ論文の公開申請を送信しました。事務局の審査完了までお待ちください。' + (result.refreshed ? '' : '保存済みです。再送信せず、画面を再読み込みしてください。'));
       setTeacherPaperTitle('');
       setTeacherPaperAuthor('');
       setTeacherPaperAbstract('');
       setTeacherPaperFile(null);
-      setTimeout(() => setTeacherApplyMessage(''), 5000);
+      form.reset();
+      } catch (error) {
+        setTeacherApplyError(`保存を確認できませんでした。入力と添付は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+      } finally {
+        teacherPaperPending.current = false;
+        setTeacherPaperSubmitting(false);
+      }
     };
 
     const handleTeacherBatchSubmitPapers = async () => {
-      if (teacherBatchSubmitting || teacherBatchPaperFiles.length === 0) return;
+      if (teacherPaperPending.current || teacherBatchPaperFiles.length === 0) return;
       const files = teacherBatchPaperFiles.filter(file => /\.(pdf|docx)$/i.test(file.name) && file.size > 0);
       if (!files.length) {
-        setTeacherApplyMessage('PDF・Word（.docx）を選んでください。');
+        setTeacherApplyError('PDF・Word（.docx）を選んでください。');
         return;
       }
+      teacherPaperPending.current = true;
       setTeacherBatchSubmitting(true);
+      setTeacherApplyError('');
       setTeacherBatchProgress(Object.fromEntries(files.map(file => [`${file.name}:${file.size}:${file.lastModified}`, 0])));
       setTeacherApplyMessage(`${files.length}件をアップロードしています。この画面を開いたままお待ちください。`);
 
-      const now = Date.now();
       const submittedDate = new Intl.DateTimeFormat('ja-JP', {
         timeZone: 'Asia/Tokyo',
         year: 'numeric',
@@ -2948,17 +2993,24 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       }).format(new Date());
       const created: PublicPaper[] = [];
       const failed: {file: File; reason: string}[] = [];
-
+      const uploadedFiles: File[] = [];
+      try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const progressKey = `${file.name}:${file.size}:${file.lastModified}`;
         try {
-          const storagePath = await uploadPdf(file, percent => {
-            setTeacherBatchProgress(old => ({...old, [progressKey]: percent}));
-          });
+          let storagePath = uploadedTeacherPapers.current.get(file);
+          if (!storagePath) {
+            storagePath = await uploadPdf(file, percent => {
+              setTeacherBatchProgress(old => ({...old, [progressKey]: percent}));
+            });
+            uploadedTeacherPapers.current.set(file, storagePath);
+          }
+          const id = teacherBatchDraftIds.current.get(file) ?? nextTeacherRecordId();
+          teacherBatchDraftIds.current.set(file, id);
           created.push({
             storagePath,
-            id: now + i,
+            id,
             title: file.name.replace(/\.(pdf|docx)$/i, ''),
             schoolName: cloud.schools.find(s => s.id === schoolId)?.name || schoolId,
             schoolId,
@@ -2973,17 +3025,27 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
             fileName: file.name,
             abstract: ''
           });
+          uploadedFiles.push(file);
         } catch (error) {
           failed.push({file, reason: error instanceof Error ? error.message : 'アップロードに失敗しました。'});
         }
       }
 
-      if (created.length) setPapers([...created, ...papers]);
+      const result = created.length ? await savePapers([...created, ...papers]) : null;
+      if (result && !result.ok) throw new Error(result.error);
       setTeacherBatchPaperFiles(failed.map(x => x.file));
-      setTeacherBatchProgress({});
-      setTeacherBatchSubmitting(false);
+      uploadedFiles.forEach(file => teacherBatchDraftIds.current.delete(file));
       const failedText = failed.length ? ` 失敗 ${failed.length}件：${failed.slice(0,3).map(x => `${x.file.name}（${x.reason}）`).join(' / ')}${failed.length>3?' ほか':''}` : '';
-      setTeacherApplyMessage(`${created.length}件を公開申請として一括送信しました。${failedText}`);
+      setTeacherApplyMessage(created.length ? `${created.length}件を公開申請として一括送信しました。${result?.ok && !result.refreshed ? '保存済みです。再送信せず、画面を再読み込みしてください。' : ''}` : '');
+      setTeacherApplyError(failedText ? `${failedText} 未送信のファイルは保持しています。` : '');
+      } catch (error) {
+        setTeacherApplyMessage('');
+        setTeacherApplyError(`保存を確認できませんでした。選択したファイルは保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`);
+      } finally {
+        setTeacherBatchProgress({});
+        teacherPaperPending.current = false;
+        setTeacherBatchSubmitting(false);
+      }
     };
 
     // ----------------------------------------
@@ -2993,10 +3055,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       return runReview(file,cloud.profile.id,()=>analysisInput(file,file.name),(input,section)=>invokeResearchAI({mode:'review',title:file.name,...input,force,...(section?{section}:{})}),(progress,partial)=>{if(itemId)setAiReviewItems(prev=>prev.map(it=>it.id===itemId?{...it,progress,...(partial?{result:{...it.result,...partial}}:{})}:it));},force);
     };
     const regenerateReview = async (item: AiReviewItem) => {
-      if(!item.sourceFile||item.sent)return;
-      updateAiReviewItem(item.id,{status:'processing',error:undefined});
+      if(!item.sourceFile||item.sent||feedbackPending.current.has(`ai:${item.id}`))return;
+      updateAiReviewItem(item.id,{status:'processing',error:undefined,errorCode:undefined,requestId:undefined});
       try { const res=await requestAiPaperReview(item.sourceFile,item.status==='done',item.id);updateAiReviewItem(item.id,{status:'done',paperTitle:res.title||item.paperTitle,result:{corrections:res.corrections,advice:res.advice,nextExperiments:res.nextExperiments},generatedAt:res.generatedAt,basis:res.basis}); }
-      catch(e){updateAiReviewItem(item.id,{status:'error',error:e instanceof Error?e.message:'解析に失敗しました。'});}
+      catch(e){updateAiReviewItem(item.id,{status:'error',error:e instanceof Error?e.message:'解析に失敗しました。',...reviewFailureDetails(e)});}
     };
 
     // 複数のWordファイルをドロップ/選択したら、1件ずつAI添削をリクエストする
@@ -3039,6 +3101,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
             ...it,
             status: 'error',
             error: err instanceof Error ? err.message : 'AI添削に失敗しました。',
+            ...reviewFailureDetails(err),
           } : it));
         }
       }
@@ -3054,15 +3117,19 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
     };
 
     const removeAiReviewItem = (id: string) => {
+      if (feedbackPending.current.has(`ai:${id}`)) return;
       setAiReviewItems(prev => prev.filter(it => it.id !== id));
     };
 
     // 添削結果を、選択した生徒宛にメッセージとして送信する
-    const handleSendAiReviewToStudent = (item: AiReviewItem) => {
-      if (!item.studentId) return;
+    const handleSendAiReviewToStudent = async (item: AiReviewItem) => {
+      const key = `ai:${item.id}`;
+      if (!item.studentId || item.sent || sentAiReviewIds.current.has(item.id) || feedbackPending.current.has(key)) return;
       const hasContent = item.result.corrections.some(l => l.trim()) || item.result.advice.some(l => l.trim()) || item.result.nextExperiments.some(l => l.trim());
       if (!hasContent) return;
-
+      feedbackPending.current.add(key);
+      updateAiReviewItem(item.id, {sending: true, sendError: '', sendNotice: ''});
+      try {
       const cleanResult: AiReviewResult = {
         corrections: item.result.corrections.map(l => l.trim()).filter(Boolean),
         advice: item.result.advice.map(l => l.trim()).filter(Boolean),
@@ -3070,7 +3137,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
       };
 
       const newMessage: StudentFeedbackMessage = {
-        id: Date.now(),
+        id: feedbackDraftIds.current.get(key) ?? nextTeacherRecordId(),
+        source: 'ai',
         schoolId: schoolId,
         studentId: item.studentId,
         teacherName: loggedInTeacher.name,
@@ -3081,9 +3149,40 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
         sentAt: new Date().toLocaleString('ja-JP'),
         read: false,
       };
+      feedbackDraftIds.current.set(key, newMessage.id);
+      const result = await saveStudentFeedbackMessages([newMessage, ...studentFeedbackMessages]);
+      if (!result.ok) throw new Error(result.error);
+      sentAiReviewIds.current.add(item.id);
+      feedbackDraftIds.current.delete(key);
+      updateAiReviewItem(item.id, {sent: true, sendNotice: result.refreshed ? '' : '送信は完了しています。再送信せず、画面を再読み込みしてください。'});
+      } catch (error) {
+        updateAiReviewItem(item.id, {sendError: `送信を確認できませんでした。添削結果と送信先は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`});
+      } finally {
+        feedbackPending.current.delete(key);
+        updateAiReviewItem(item.id, {sending: false});
+      }
+    };
 
-      setStudentFeedbackMessages([newMessage, ...studentFeedbackMessages]);
-      updateAiReviewItem(item.id, { sent: true });
+    const handleSendManualFeedback = async (assignment: AssignmentData, studentId: string, fileName: string) => {
+      const key = `${assignment.id}:${studentId}`;
+      const note = (manualFeedbackDrafts[key] || '').trim();
+      if (!note || feedbackPending.current.has(key)) return;
+      feedbackPending.current.add(key);
+      setManualFeedbackStatus(old => ({...old, [key]: {pending: true}}));
+      try {
+        const id = feedbackDraftIds.current.get(key) ?? nextTeacherRecordId();
+        feedbackDraftIds.current.set(key, id);
+        const message: StudentFeedbackMessage = {id, source: 'manual', assignmentId: String(assignment.id), schoolId, studentId, teacherName: loggedInTeacher.name, paperTitle: assignment.title, fileName: fileName || '', result: {corrections: [], advice: [], nextExperiments: []}, note, sentAt: new Date().toISOString(), read: false};
+        const result = await saveStudentFeedbackMessages([message, ...studentFeedbackMessages]);
+        if (!result.ok) throw new Error(result.error);
+        feedbackDraftIds.current.delete(key);
+        setManualFeedbackDrafts(old => ({...old, [key]: ''}));
+        setManualFeedbackStatus(old => ({...old, [key]: {success: result.refreshed ? 'フィードバックを送信しました。' : '送信は完了しています。再送信せず、画面を再読み込みしてください。'}}));
+      } catch (error) {
+        setManualFeedbackStatus(old => ({...old, [key]: {error: `送信を確認できませんでした。入力は保持しています。${error instanceof Error ? error.message : '通信状態を確認して再試行してください。'}`}}));
+      } finally {
+        feedbackPending.current.delete(key);
+      }
     };
 
     const teacherFeatureTab=(tab:string)=>tab==='課題管理'?'進捗管理':tab;
@@ -3182,14 +3281,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
           <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shadow-sm sticky top-0 z-10">
             <div className="flex items-center gap-3 w-96">
               {sidebarCollapsed&&<button type="button" onClick={()=>setSidebarCollapsed(false)} aria-label="メニューを開く" title="メニューを開く" className="p-2 rounded-lg text-gray-500 hover:bg-orange-50 hover:text-orange-700 shrink-0"><PanelLeftOpen className="w-5 h-5"/></button>}
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="検索..."
-                  className="w-full pl-9 pr-4 py-1.5 bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
-                />
-              </div>
+              <PortalSearch enabled={tabMode('みんなの論文')==='enabled'} onSearch={searchPublicPapers}/>
             </div>
 
             <div className="flex items-center gap-4">
@@ -3199,7 +3291,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-900">{loggedInTeacher.name} 先生</p>
-                  <p className="text-xs font-medium text-gray-400">ID: {loggedInTeacher.id}</p>
+                  <p className="text-xs font-medium text-gray-400">ID: {profile.login_id || '未設定'}</p>
                 </div>
               </div>
             </div>
@@ -3293,7 +3385,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
               ) : currentTab === '研究テーマを見つける' ? (
                 <ResearchThemeFinder papers={papers} onOpen={p=>{setDetailPaper(p);setCurrentTab('みんなの論文');setSidebarCollapsed(true);}} />
               ) : currentTab === 'みんなの論文' ? (
-                detailPaper ? <ResearchDetail key={String(detailPaper.id)} paper={detailPaper} onBack={()=>setDetailPaper(null)} /> : <ResearchLibrary papers={papers} onOpen={p=>{setDetailPaper(p);setSidebarCollapsed(true);}} />
+                detailPaper ? <ResearchDetail key={String(detailPaper.id)} paper={detailPaper} onBack={()=>setDetailPaper(null)} /> : <ResearchLibrary key={librarySearch.revision} initialQuery={librarySearch.query} papers={papers} onOpen={p=>{setDetailPaper(p);setSidebarCollapsed(true);}} />
               ) : currentTab === '教材' ? (
                 <div className="space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
@@ -3349,8 +3441,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <Check className="w-4 h-4 text-emerald-600" /> {teacherApplyMessage}
                     </div>
                   )}
+                  {teacherApplyError && <p role="alert" className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm rounded-xl">{teacherApplyError}</p>}
 
                   <form onSubmit={handleTeacherSubmitPaper} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                    <fieldset disabled={teacherPaperSubmitting || teacherBatchSubmitting} className="space-y-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-700">論文タイトル</label>
                       <input
@@ -3437,8 +3531,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       type="submit"
                       className="py-3 px-6 bg-orange-400 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors text-sm shadow-sm flex items-center gap-2"
                     >
-                      <FileUp className="w-4 h-4" /> LTIへ公開申請を送信する
+                      <FileUp className="w-4 h-4" /> {teacherPaperSubmitting ? '公開申請を保存中…' : 'LTIへ公開申請を送信する'}
                     </button>
+                    </fieldset>
                   </form>
 
                   {!editingPaper && (
@@ -3457,7 +3552,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           type="file"
                           multiple
                           accept=".pdf,.docx"
-                          disabled={teacherBatchSubmitting}
+                          disabled={teacherBatchSubmitting || teacherPaperSubmitting}
                           onChange={(e) => {
                             const selected = Array.from(e.target.files || []).filter(file => /\.(pdf|docx)$/i.test(file.name) && file.size > 0);
                             setTeacherBatchPaperFiles(old => {
@@ -3479,7 +3574,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-sm font-bold text-gray-800">選択中 {teacherBatchPaperFiles.length}件</p>
-                            <button type="button" disabled={teacherBatchSubmitting} onClick={()=>setTeacherBatchPaperFiles([])} className="text-xs font-bold text-gray-500 hover:text-rose-600 disabled:opacity-40">すべて解除</button>
+                            <button type="button" disabled={teacherBatchSubmitting || teacherPaperSubmitting} onClick={()=>setTeacherBatchPaperFiles([])} className="text-xs font-bold text-gray-500 hover:text-rose-600 disabled:opacity-40">すべて解除</button>
                           </div>
                           <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
                             {teacherBatchPaperFiles.map(file => {
@@ -3491,7 +3586,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                     <p className="text-xs font-bold text-gray-800 break-all">{file.name}</p>
                                     <p className="text-[11px] text-gray-400 mt-0.5">{(file.size/1024/1024).toFixed(1)} MB</p>
                                   </div>
-                                  {!teacherBatchSubmitting && <button type="button" onClick={()=>setTeacherBatchPaperFiles(old=>old.filter(x=>`${x.name}:${x.size}:${x.lastModified}`!==progressKey))} className="shrink-0 text-xs font-bold text-rose-600">除外</button>}
+                                  {!teacherBatchSubmitting && <button type="button" disabled={teacherPaperSubmitting} onClick={()=>setTeacherBatchPaperFiles(old=>old.filter(x=>`${x.name}:${x.size}:${x.lastModified}`!==progressKey))} className="shrink-0 text-xs font-bold text-rose-600">除外</button>}
                                 </div>
                                 {typeof progress === 'number' && <div className="mt-2"><div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden"><div className="h-full bg-orange-400 transition-all" style={{width:`${progress}%`}}/></div><p className="mt-1 text-[11px] text-gray-500">アップロード {progress}%</p></div>}
                               </div>;
@@ -3499,12 +3594,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           </div>
                           <button
                             type="button"
-                            disabled={teacherBatchSubmitting}
+                            disabled={teacherBatchSubmitting || teacherPaperSubmitting}
                             onClick={()=>void handleTeacherBatchSubmitPapers()}
                             className="w-full py-3 px-6 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-colors text-sm shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
                           >
                             <FileUp className="w-4 h-4" />
-                            {teacherBatchSubmitting ? '一括アップロード中…' : `${teacherBatchPaperFiles.length}件を一括で公開申請する`}
+                            {teacherBatchSubmitting ? 'アップロード・公開申請を保存中…' : `${teacherBatchPaperFiles.length}件を一括で公開申請する`}
                           </button>
                         </div>
                       )}
@@ -3522,7 +3617,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             <p className="text-gray-500 mt-0.5">著者: {paper.author} | 申請日: {paper.submittedDate}</p>
                           </div>
                           <div className="flex items-center gap-2">
-                            {paper.status!=='公開中'&&<><button className="underline" onClick={()=>{setEditingPaper(paper);setTeacherPaperTitle(paper.title);setTeacherPaperAuthor(paper.author);setTeacherPaperAbstract(paper.abstract||'');setTeacherPaperField(paper.field);setTeacherPaperFile(null);}}>修正</button><button className="text-red-700" onClick={()=>{if(confirm('この公開申請を取り消しますか？'))setPapers(papers.filter(p=>p.id!==paper.id));}}>申請取消</button></>}{paper.status==='公開中'&&<button disabled={paper.withdrawalRequested} className="text-red-700" onClick={()=>{if(confirm('運営へ公開差し止めを申請しますか？'))setPapers(papers.map(p=>p.id===paper.id?{...p,withdrawalRequested:true}:p));}}>{paper.withdrawalRequested?'差し止め申請済み':'差し止め申請'}</button>}
+                            {paper.status!=='公開中'&&<><button disabled={teacherPaperSubmitting || teacherBatchSubmitting} className="underline" onClick={()=>{if(teacherPaperPending.current)return;teacherPaperDraftId.current=null;setTeacherApplyError('');setTeacherApplyMessage('');setEditingPaper(paper);setTeacherPaperTitle(paper.title);setTeacherPaperAuthor(paper.author);setTeacherPaperAbstract(paper.abstract||'');setTeacherPaperField(paper.field);setTeacherPaperFile(null);}}>修正</button><button disabled={teacherPaperSubmitting || teacherBatchSubmitting} className="text-red-700" onClick={()=>{if(confirm('この公開申請を取り消しますか？'))setPapers(papers.filter(p=>p.id!==paper.id));}}>申請取消</button></>}{paper.status==='公開中'&&<button disabled={paper.withdrawalRequested || teacherPaperSubmitting || teacherBatchSubmitting} className="text-red-700" onClick={()=>{if(confirm('運営へ公開差し止めを申請しますか？'))setPapers(papers.map(p=>p.id===paper.id?{...p,withdrawalRequested:true}:p));}}>{paper.withdrawalRequested?'差し止め申請済み':'差し止め申請'}</button>}
                             <button onClick={() => setPreviewPaper(paper)} className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg text-xs">
                               中身を確認
                             </button>
@@ -3727,11 +3822,13 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                           <p className="text-gray-400 italic text-xs">※添付ファイルなし</p>
                                         )}
 
-                                        <form className="space-y-2 rounded-xl border border-orange-100 bg-white p-3" onSubmit={e=>{e.preventDefault();const form=e.currentTarget;const note=String(new FormData(form).get('feedback')||'').trim();if(!note)return;setStudentFeedbackMessages([{id:Date.now(),assignmentId:String(activeAssign.id),schoolId,studentId:student.id,teacherName:loggedInTeacher.name,paperTitle:activeAssign.title,fileName:fileName||'',result:{corrections:[],advice:[],nextExperiments:[]},note,sentAt:new Date().toISOString(),read:false},...studentFeedbackMessages]);form.reset();}}>
+                                        <form className="space-y-2 rounded-xl border border-orange-100 bg-white p-3" onSubmit={e=>{e.preventDefault();void handleSendManualFeedback(activeAssign,student.id,fileName||'');}}>
                                           <label className="block text-xs font-bold text-gray-600">この提出物へのフィードバック
-                                            <textarea name="feedback" required maxLength={10000} aria-label="課題へのフィードバック" placeholder="コメントを入力..." className="mt-1.5 w-full min-h-20 border border-gray-200 rounded-lg p-3 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-300"/>
+                                            <textarea name="feedback" required maxLength={10000} aria-label="課題へのフィードバック" placeholder="コメントを入力..." value={manualFeedbackDrafts[`${activeAssign.id}:${student.id}`] || ''} onChange={e=>setManualFeedbackDrafts(old=>({...old,[`${activeAssign.id}:${student.id}`]:e.target.value}))} disabled={!!manualFeedbackStatus[`${activeAssign.id}:${student.id}`]?.pending} className="mt-1.5 w-full min-h-20 border border-gray-200 rounded-lg p-3 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-300"/>
                                           </label>
-                                          <div className="flex justify-end"><button className="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold px-3 py-2 rounded-lg">フィードバックを送る</button></div>
+                                          {manualFeedbackStatus[`${activeAssign.id}:${student.id}`]?.error && <p role="alert" className="text-xs text-rose-700">{manualFeedbackStatus[`${activeAssign.id}:${student.id}`].error}</p>}
+                                          {manualFeedbackStatus[`${activeAssign.id}:${student.id}`]?.success && <p role="status" className="text-xs text-emerald-700">{manualFeedbackStatus[`${activeAssign.id}:${student.id}`].success}</p>}
+                                          <div className="flex justify-end"><button disabled={!!manualFeedbackStatus[`${activeAssign.id}:${student.id}`]?.pending} className="bg-orange-100 hover:bg-orange-200 disabled:opacity-40 text-orange-800 font-bold px-3 py-2 rounded-lg">{manualFeedbackStatus[`${activeAssign.id}:${student.id}`]?.pending ? '送信中…' : 'フィードバックを送る'}</button></div>
                                         </form>
                                       </div>}
                                     </div>
@@ -3778,8 +3875,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <Check className="w-4 h-4" /> {assignMessage}
                     </div>
                   )}
+                  {assignError && <p role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-sm rounded-xl">{assignError}</p>}
 
                   <form onSubmit={handleCreateOrUpdateAssignment} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                    <fieldset disabled={assignmentSubmitting} className="space-y-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-700">課題タイトル</label>
                       <input
@@ -3836,12 +3935,16 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         type="submit"
                         className="py-2.5 px-5 bg-orange-400 hover:bg-orange-500 text-white font-semibold rounded-xl transition-colors text-sm shadow-sm flex items-center gap-2"
                       >
-                        <FileText className="w-4 h-4" /> {editingAssignmentId !== null ? '課題を再配信する' : '生徒に課題を配信する'}
+                        <FileText className="w-4 h-4" /> {assignmentSubmitting ? '課題を保存中…' : editingAssignmentId !== null ? '課題を再配信する' : '生徒に課題を配信する'}
                       </button>
                       {editingAssignmentId !== null && (
                         <button
                           type="button"
                           onClick={() => {
+                            if (assignmentPending.current) return;
+                            assignmentDraftId.current = null;
+                            setAssignError('');
+                            setAssignMessage('');
                             setEditingAssignmentId(null);
                             setNewAssignTitle('');
                             setNewAssignDeadline('');
@@ -3855,6 +3958,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                         </button>
                       )}
                     </div>
+                    </fieldset>
                   </form>
 
                   <div className="space-y-3">
@@ -3868,10 +3972,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           {assign.attachmentName&&<p className="text-[11px] font-bold text-orange-700 flex items-center gap-1"><FileText className="w-3.5 h-3.5"/>添付: {assign.attachmentName}</p>}
                         </div>
                         <div className="flex items-center gap-2">
-                          <button aria-label="課題を編集" onClick={(e) => { e.stopPropagation(); handleEditClick(assign); }} className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
+                          <button disabled={assignmentSubmitting} aria-label="課題を編集" onClick={(e) => { e.stopPropagation(); handleEditClick(assign); }} className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
                             <Edit3 className="w-4 h-4" />
                           </button>
-                          <button aria-label="課題を削除" onClick={(e) => { e.stopPropagation(); handleDeleteAssignment(assign.id); }} className="p-2 text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                          <button disabled={assignmentSubmitting} aria-label="課題を削除" onClick={(e) => { e.stopPropagation(); void handleDeleteAssignment(assign.id); }} className="p-2 text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -3923,7 +4027,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 type="text"
                                 value={item.paperTitle}
                                 onChange={(e) => updateAiReviewItem(item.id, { paperTitle: e.target.value })}
-                                disabled={item.sent}
+                                disabled={item.sent || item.sending}
                                 className="text-sm font-bold text-gray-900 bg-transparent border-b border-transparent hover:border-gray-200 focus:border-orange-400 focus:outline-none disabled:text-gray-400 px-0 py-0.5"
                               />
                             </div>
@@ -3945,7 +4049,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 </span>
                               )}
                               {!item.sent && (
-                                <button type="button" onClick={() => removeAiReviewItem(item.id)} className="text-gray-400 hover:text-red-600">
+                                <button type="button" disabled={item.sending} onClick={() => removeAiReviewItem(item.id)} className="text-gray-400 hover:text-red-600">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
@@ -3955,9 +4059,11 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           {item.status === 'error' && (
                             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">{item.error} 完了した項目はこの画面で保持しています。画面を閉じると失われるため、このまま再開してください。</p>
                           )}
+                          {item.status === 'error' && (item.errorCode || item.requestId) && <details className="text-xs text-gray-500"><summary className="cursor-pointer">お問い合わせ用の診断情報</summary><div className="mt-2 space-y-1">{item.errorCode && <p>エラーコード: <code>{item.errorCode}</code></p>}{item.requestId && <p>リクエストID: <code>{item.requestId}</code></p>}</div></details>}
 
-                          {item.status !== 'processing' && <ReviewPanels result={item.result} generatedAt={item.generatedAt} basis={item.basis} readOnly={item.sent} onChange={(key,value)=>updateAiReviewResultField(item.id,key,value)}/>}
-                          {item.sourceFile && !item.sent && item.status !== 'processing' && <button type="button" onClick={()=>void regenerateReview(item)} className="text-sm underline text-slate-600">{item.status==='error'?'未完了の項目を再解析':'結果を再生成'}</button>}
+                          {item.sendError && <p role="alert" className="text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded-xl p-3">{item.sendError}</p>}
+                          {item.status !== 'processing' && <ReviewPanels result={item.result} generatedAt={item.generatedAt} basis={item.basis} readOnly={item.sent || !!item.sending} onChange={(key,value)=>updateAiReviewResultField(item.id,key,value)}/>}
+                          {item.sourceFile && !item.sent && item.status !== 'processing' && <button type="button" disabled={item.sending} onClick={()=>void regenerateReview(item)} className="text-sm underline text-slate-600">{item.status==='error'?'未完了の項目を再解析':'結果を再生成'}</button>}
 
                           {item.status !== 'processing' && !item.sent && (
                             <div className="pt-3 border-t border-gray-100 space-y-3">
@@ -3966,6 +4072,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   <label className="text-xs font-bold text-gray-500">送信先の生徒</label>
                                   <select
                                     value={item.studentId}
+                                    disabled={item.sending}
                                     onChange={(e) => updateAiReviewItem(item.id, { studentId: e.target.value })}
                                     className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
                                   >
@@ -3980,6 +4087,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   <input
                                     type="text"
                                     value={item.note}
+                                    disabled={item.sending}
                                     onChange={(e) => updateAiReviewItem(item.id, { note: e.target.value })}
                                     placeholder="例: 特に追加実験の部分、一緒に相談しましょう"
                                     className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
@@ -3990,10 +4098,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 <button
                                   type="button"
                                   onClick={() => handleSendAiReviewToStudent(item)}
-                                  disabled={!item.studentId}
+                                  disabled={!item.studentId || item.sending || ![...item.result.corrections, ...item.result.advice, ...item.result.nextExperiments].some(line => line.trim())}
                                   className="py-2.5 px-5 bg-orange-400 hover:bg-orange-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-xs shadow-sm flex items-center gap-2"
                                 >
-                                  <Send className="w-4 h-4" /> この内容を生徒に送信する
+                                  <Send className="w-4 h-4" /> {item.sending ? 'フィードバックを送信中…' : 'この内容を生徒に送信する'}
                                 </button>
                               </div>
                             </div>
@@ -4002,6 +4110,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                           {item.sent && (
                             <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-xl p-3">
                               {schoolStudents.find(s => s.id === item.studentId)?.name || '選択した生徒'} さんに送信しました。
+                              {item.sendNotice}
                             </p>
                           )}
                         </div>
@@ -4136,7 +4245,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <label className="text-xs font-bold text-gray-700">教員ID (ログイン用 / 変更不可)</label>
                       <input
                         type="text"
-                        value={loggedInTeacher.id}
+                        value={profile.login_id || 'ログインID未設定'}
                         disabled
                         className="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-xl text-xs font-medium text-gray-500 cursor-not-allowed font-mono"
                       />
@@ -4266,13 +4375,13 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
         <ResubmitConfirmModal
           showResubmitConfirmModal={showResubmitConfirmModal}
           setShowResubmitConfirmModal={setShowResubmitConfirmModal}
-          selectedAssignmentId={selectedAssignmentId}
-          assignments={assignments}
-          setAssignments={saveAssignments}
-          currentStudentId={currentStudentId}
-          setStudentSubmissionText={setStudentSubmissionText}
-          setStudentSubmissionFile={setStudentSubmissionFile}
-          setStudentSubmitSuccessMsg={setStudentSubmitSuccessMsg}
+          onEdit={() => {
+            if (selectedAssignmentId === null) return;
+            const prior = assignments.find(a => a.id === selectedAssignmentId)?.submissions?.[currentStudentId];
+            if (!prior) return;
+            const draft = studentDrafts[selectedAssignmentId];
+            updateStudentDraft(selectedAssignmentId, draft?.editing ? {editing:true} : {text:prior.submittedText||'',file:null,error:'',success:'',editing:true,removeAttachment:false});
+          }}
         />
 
         <aside className={`lti-sidebar w-64 shrink-0 bg-white shadow-sm flex-col border-r border-gray-200 ${sidebarCollapsed?'hidden':'flex'}`}>
@@ -4315,7 +4424,6 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                     onClick={() => {
                       setCurrentTab(item.name);
                       closeSidebarOnMobile();
-                      setStudentSubmitSuccessMsg('');
                     }}
                     className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors cursor-grab active:cursor-grabbing ${
                       isActive ? 'bg-emerald-50 text-emerald-800 font-bold' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
@@ -4335,14 +4443,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
           <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shadow-sm sticky top-0 z-10">
             <div className="flex items-center gap-3 w-96">
               {sidebarCollapsed&&<button type="button" onClick={()=>setSidebarCollapsed(false)} aria-label="メニューを開く" title="メニューを開く" className="p-2 rounded-lg text-gray-500 hover:bg-emerald-50 hover:text-emerald-700 shrink-0"><PanelLeftOpen className="w-5 h-5"/></button>}
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="検索..."
-                  className="w-full pl-9 pr-4 py-1.5 bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
-                />
-              </div>
+              <PortalSearch enabled={tabMode('みんなの論文')==='enabled'} onSearch={searchPublicPapers}/>
             </div>
 
             <div className="flex items-center gap-4">
@@ -4352,7 +4453,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-900">{loggedInStudent.name}</p>
-                  <p className="text-xs font-medium text-gray-400">{loggedInStudent.class} | ID: {loggedInStudent.id}</p>
+                  <p className="text-xs font-medium text-gray-400">{loggedInStudent.class} | ID: {profile.login_id || '未設定'}</p>
                 </div>
               </div>
             </div>
@@ -4421,20 +4522,23 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-bold text-gray-900">課題・提出物一覧</h2>
-                      <p className="text-xs font-medium text-gray-500">先生から出された課題を選択して、文章やPDFファイルを提出してください。</p>
+                      <p className="text-xs font-medium text-gray-500">先生から出された課題を選択して、文章やPDF・Wordファイルを提出してください。</p>
                     </div>
                   </div>
-
-                  {studentSubmitSuccessMsg && (
-                    <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
-                      <Check className="w-4 h-4 text-emerald-600" /> {studentSubmitSuccessMsg}
-                    </div>
-                  )}
 
                   <div className="grid grid-cols-1 gap-4">
                     {schoolAssignments.map(assign => {
                       const submission = assign.submissions?.[currentStudentId];
                       const isSubmitted = submission && submission.status === '提出済み';
+                      const draft = studentDrafts[assign.id] || emptySubmissionDraft;
+                      const studentSubmissionText = draft.text;
+                      const studentSubmissionFile = draft.file;
+                      const studentSubmitErrorMsg = draft.error;
+                      const setStudentSubmissionText = (text:string) => updateStudentDraft(assign.id,{text});
+                      const setStudentSubmissionFile = (file:File|null) => updateStudentDraft(assign.id,{file});
+                      const setStudentSubmitSuccessMsg = (success:string) => updateStudentDraft(assign.id,{success});
+                      const setStudentSubmitErrorMsg = (error:string) => updateStudentDraft(assign.id,{error});
+                      const retainedAttachment = draft.editing && !draft.removeAttachment ? submission?.storagePath : undefined;
 
                       return (
                         <div key={assign.id} className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
@@ -4470,7 +4574,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             </details>
                           )}
 
-                          {isSubmitted ? (
+                          {draft.success && <p role="status" className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs">{draft.success}</p>}
+                          {isSubmitted && (
                             <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2 text-xs">
                               <p className="font-bold text-emerald-900">【提出済みの内容】</p>
                               <p className="text-gray-700 whitespace-pre-wrap">{submission.submittedText || '（テキストなし）'}</p>
@@ -4482,9 +4587,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               )}
                               <PdfView path={submission.storagePath} />
                               {studentFeedbackMessages.filter(m=>m.assignmentId===String(assign.id)&&m.studentId===currentStudentId).map(m=><div key={m.id} className="p-3 bg-white rounded-lg"><strong>{m.teacherName}先生から</strong><p className="whitespace-pre-wrap">{m.note}</p></div>)}
-                              <p className="text-xs text-gray-400 font-mono pt-1">提出日時: {submission.submittedAt}</p>
+                              <p className="text-xs text-gray-400 font-mono pt-1">提出日時: {formatDisplayDateTime(submission.submittedAt)}</p>
                               
                               <button
+                                disabled={studentSubmitting || draft.editing}
                                 onClick={() => {
                                   setSelectedAssignmentId(assign.id);
                                   setShowResubmitConfirmModal(true);
@@ -4494,12 +4600,13 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 課題を再提出する
                               </button>
                             </div>
-                          ) : (
+                          )}
+                          {(!isSubmitted || draft.editing) && (
                             <form
                               onSubmit={async (e) => {
                                 e.preventDefault();
                                 if (studentSubmissionPending.current) return;
-                                if (!studentSubmissionText.trim() && !studentSubmissionFile) {
+                                if (!studentSubmissionText.trim() && !studentSubmissionFile && !retainedAttachment) {
                                   alert('テキストを入力するかファイルを選択してください。');
                                   return;
                                 }
@@ -4511,7 +4618,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 const text = studentSubmissionText;
                                 const file = studentSubmissionFile;
                                 try {
-                                let storagePath: string | undefined;
+                                let storagePath: string | undefined = retainedAttachment;
                                 if (file) {
                                   const uploaded = uploadedStudentSubmission.current;
                                   if (uploaded?.file === file && uploaded.assignmentId === assign.id && uploaded.studentId === currentStudentId) {
@@ -4532,7 +4639,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                         [currentStudentId]: {
                                           storagePath,
                                           submittedText: text,
-                                          submittedFile: file ? { name: file.name } : null,
+                                          submittedFile: file ? { name: file.name } : retainedAttachment ? submission?.submittedFile : null,
                                           status: '提出済み',
                                           submittedAt: nowStr,
                                           late: Date.now()>new Date(assign.deadline.replace(/\//g,'-')+'T23:59:59+09:00').getTime()
@@ -4549,8 +4656,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 uploadedStudentSubmission.current = null;
                                 setStudentSubmissionText('');
                                 setStudentSubmissionFile(null);
+                                updateStudentDraft(assign.id,{editing:false,removeAttachment:false});
                                 setStudentSubmitSuccessMsg(result.refreshed ? '課題を正常に提出しました！' : '課題は保存されました。表示を更新できなかったため、再提出せず保存済みデータを再読み込みしてください。');
-                                setTimeout(() => setStudentSubmitSuccessMsg(''), 4000);
                                 } catch (error) {
                                   setStudentSubmitErrorMsg(error instanceof Error ? error.message : '提出を完了できませんでした。入力内容は残しています。');
                                 } finally {
@@ -4560,6 +4667,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               }}
                               className="space-y-3 pt-2 border-t border-gray-100"
                             >
+                              {draft.editing && <p className="text-xs text-gray-600">新しい内容の保存が完了するまで、前回の提出物は残ります。</p>}
                               <textarea
                                 disabled={studentSubmitting}
                                 value={studentSubmissionText}
@@ -4570,6 +4678,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               ></textarea>
 
                               <div className="space-y-1">
+                                {draft.editing && submission?.storagePath && <label className="flex gap-2 text-xs"><input type="checkbox" disabled={studentSubmitting} checked={draft.removeAttachment} onChange={e=>updateStudentDraft(assign.id,{removeAttachment:e.target.checked})}/>前回の添付を外す（新しい添付を選ぶと差し替えます）</label>}
                                 <input
                                   type="file"
                                   disabled={studentSubmitting}
@@ -4588,8 +4697,9 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 disabled={studentSubmitting}
                                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors shadow-sm"
                               >
-                                {studentSubmitting ? '提出を保存中…' : '課題を提出する'}
+                                {studentSubmitting ? '提出を保存中…' : draft.editing ? '変更した内容を再提出する' : '課題を提出する'}
                               </button>
+                              {draft.editing && <button type="button" disabled={studentSubmitting} onClick={()=>updateStudentDraft(assign.id,{editing:false,error:''})} className="text-xs underline">編集をやめる（前回の提出を保持）</button>}
                               {studentSubmitErrorMsg && <p role="alert" className="text-xs text-rose-700">{studentSubmitErrorMsg}</p>}
                             </form>
                           )}
@@ -4672,12 +4782,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
               ) : currentTab === '研究テーマを見つける' ? (
                 <ResearchThemeFinder papers={papers} onOpen={p=>{setDetailPaper(p);setCurrentTab('みんなの論文');setSidebarCollapsed(true);}} />
               ) : currentTab === 'みんなの論文' ? (
-                detailPaper ? <ResearchDetail key={String(detailPaper.id)} paper={detailPaper} onBack={()=>setDetailPaper(null)} /> : <ResearchLibrary papers={papers} onOpen={p=>{setDetailPaper(p);setSidebarCollapsed(true);}} />
+                detailPaper ? <ResearchDetail key={String(detailPaper.id)} paper={detailPaper} onBack={()=>setDetailPaper(null)} /> : <ResearchLibrary key={librarySearch.revision} initialQuery={librarySearch.query} papers={papers} onOpen={p=>{setDetailPaper(p);setSidebarCollapsed(true);}} />
               ) : currentTab === '先生からのフィードバック' ? (
                 <div className="space-y-6">
                   <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-1">
                     <h2 className="text-lg font-bold text-gray-900">先生からのフィードバック</h2>
-                    <p className="text-xs font-medium text-gray-500">AIによる添削をもとに、先生から届いたコメントの一覧です。</p>
+                    <p className="text-xs font-medium text-gray-500">課題へのコメントや、先生が確認したAI添削の結果を表示します。</p>
                   </div>
 
                   {myFeedbackMessages.length === 0 ? (
@@ -4723,7 +4833,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                 </div>
                               </div>
                               <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 flex items-center gap-1 shrink-0">
-                                <Bot className="w-3 h-3" /> AI添削
+                                <Bot className="w-3 h-3" /> {m.source === 'manual' || (m.source !== 'ai' && m.assignmentId) ? '課題へのコメント' : 'AI添削'}
                               </span>
                             </button>
 
@@ -4823,7 +4933,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                       <label className="text-xs font-bold text-gray-700">生徒ID (ログイン用 / 変更不可)</label>
                       <input
                         type="text"
-                        value={loggedInStudent.id}
+                        value={profile.login_id || 'ログインID未設定'}
                         disabled
                         className="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-xl text-xs font-medium text-gray-500 cursor-not-allowed font-mono"
                       />

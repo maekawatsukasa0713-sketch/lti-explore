@@ -13,9 +13,9 @@ function visit(node) {
     const expression = node.initializer.expression;
     if (expression && expression.getText(app).includes('setStudentSubmitSuccessMsg')) handlers.push(expression.getText(app));
   }
-  if (ts.isJsxAttribute(node) && node.name.getText(app) === 'onClick' && node.initializer && ts.isJsxExpression(node.initializer)) {
+  if (ts.isJsxAttribute(node) && node.name.getText(app) === 'onEdit' && node.initializer && ts.isJsxExpression(node.initializer)) {
     const expression = node.initializer.expression;
-    if (expression && expression.getText(app).includes('delete newSubmissions[currentStudentId]')) resubmitHandlers.push(expression.getText(app));
+    if (expression && expression.getText(app).includes('selectedAssignmentId')) resubmitHandlers.push(expression.getText(app));
   }
   ts.forEachChild(node, visit);
 }
@@ -39,6 +39,9 @@ function fixture({save = async () => ({ok: true, refreshed: true}), upload = asy
     Error,
     studentSubmissionText: state.text,
     studentSubmissionFile: file,
+    retainedAttachment: undefined,
+    submission: undefined,
+    updateStudentDraft: (_id, patch) => Object.assign(state, patch),
     studentSubmissionPending: {current: false},
     uploadedStudentSubmission: {current: null},
     assignments: [assignment], assign: assignment, currentStudentId: 'student-test',
@@ -158,63 +161,56 @@ function fixture({save = async () => ({ok: true, refreshed: true}), upload = asy
   assert.equal(f.state.busy, false);
 }
 
-assert.equal(resubmitHandlers.length, 1, 'locate the actual resubmission confirmation callback');
-const resubmitCode = ts.transpileModule(`globalThis.confirm = ${resubmitHandlers[0]};`, {compilerOptions: {target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None}}).outputText;
-function resubmission(save) {
-  const file = {name: 'draft.pdf'};
-  const prior = {submittedText: '前回提出', storagePath: 'student-test/original.pdf'};
-  const state = {text: '新しい入力', file, success: '', open: true, saving: false, calls: []};
-  const context = {
-    pending: {current: false}, selectedAssignmentId: 42, currentStudentId: 'student-test',
-    assignments: [{id: 42, submissions: {'student-test': prior, 'other-student': {submittedText: '別の生徒'}}}],
-    setAssignments: async value => {state.calls.push(value); return save(value);},
-    setSaving: value => {state.saving = value;},
-    setStudentSubmissionText: value => {state.text = value;},
-    setStudentSubmissionFile: value => {state.file = value;},
-    setStudentSubmitSuccessMsg: value => {state.success = value;},
-    setShowResubmitConfirmModal: value => {state.open = value;},
-  };
-  vm.createContext(context);
-  vm.runInContext(resubmitCode, context);
-  return {state, context, file, prior, confirm: context.confirm};
+// Editing a submitted assignment must never delete its stored submission.
+assert.equal(resubmitHandlers.length, 1);
+const resubmitCode = ts.transpileModule(`globalThis.edit = ${resubmitHandlers[0]};`, {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+{
+ const prior={submittedText:'前回提出',storagePath:'student-test/original.pdf',submittedFile:{name:'original.pdf'},status:'提出済み'};
+ const assignment={id:42,submissions:{'student-test':prior,'other-student':{submittedText:'別の生徒'}}};
+ const state={};
+ const context={selectedAssignmentId:42,currentStudentId:'student-test',assignments:[assignment],studentDrafts:{},updateStudentDraft:(id,patch)=>{state[id]=patch;}};
+ vm.createContext(context);vm.runInContext(resubmitCode,context);context.edit();
+ assert.equal(state[42].text,'前回提出');assert.equal(state[42].editing,true);
+ assert.equal(assignment.submissions['student-test'],prior,'starting an edit preserves the original record and attachment');
+ assert.equal(assignment.submissions['other-student'].submittedText,'別の生徒');
+}
+{
+ const ack=deferred();const f=fixture({save:()=>ack.promise});
+ const prior={submittedText:'前回提出',storagePath:'student-test/original.pdf',submittedFile:{name:'original.pdf'},status:'提出済み'};
+ f.context.assign.submissions['student-test']=prior;
+ f.context.submission=prior;f.context.retainedAttachment=prior.storagePath;
+ f.context.studentSubmissionFile=null;f.state.file=null;
+ const pending=f.submit(event());await flush();
+ assert.equal(f.context.assign.submissions['student-test'],prior);
+ assert.equal(f.state.saves[0][0].submissions['student-test'].storagePath,prior.storagePath,'text-only edit retains previous attachment');
+ assert.equal(f.state.saves[0][0].submissions['student-test'].submittedFile.name,'original.pdf');
+ ack.resolve({ok:false,error:'network'});await pending;
+ assert.equal(f.context.assign.submissions['student-test'],prior,'failed replacement cannot remove previous submission');
+ assert.equal(f.state.text,'失敗しても保持する提出本文');
 }
 
-{
-  const ack = deferred();
-  const f = resubmission(() => ack.promise);
-  const pending = f.confirm();
-  const duplicate = f.confirm();
-  await flush();
-  assert.equal(f.state.calls.length, 1, 'resubmission confirmation is protected from double clicks');
-  assert.equal(f.state.text, '新しい入力');
-  assert.equal(f.state.file, f.file);
-  assert.equal(f.state.open, true);
-  assert.equal(f.state.saving, true);
-  assert.equal(f.state.success, '');
-  assert.equal(f.context.assignments[0].submissions['student-test'], f.prior, 'pending request never mutates the original submission');
-  assert.equal(f.state.calls[0][0].submissions['other-student'].submittedText, '別の生徒');
-  ack.resolve({ok: false, error: 'conflict'});
-  await Promise.all([pending, duplicate]);
-  assert.equal(f.state.text, '新しい入力');
-  assert.equal(f.state.file, f.file);
-  assert.equal(f.state.open, true, 'failed deletion leaves the confirmation open');
-  assert.equal(f.state.success, '');
-  assert.equal(f.state.saving, false);
-  assert.equal(f.context.pending.current, false);
+// Execute the actual per-card draft bindings, not a copy of the state implementation.
+let mapCallback,updateDraft;
+function findDraft(node){
+ if(ts.isCallExpression(node)&&node.expression.getText(app)==='schoolAssignments.map')mapCallback=node.arguments[0];
+ if(ts.isVariableDeclaration(node)&&node.name.getText(app)==='updateStudentDraft')updateDraft=node.initializer.getText(app);
+ ts.forEachChild(node,findDraft);
 }
-
+findDraft(app);assert.ok(mapCallback&&updateDraft);
+const bindings=mapCallback.body.statements.filter(ts.isVariableStatement).map(n=>n.getText(app)).join('\n');
+const bindingCode=ts.transpileModule(`const updateStudentDraft=${updateDraft};globalThis.bind=(assign)=>{${bindings};return {text:studentSubmissionText,file:studentSubmissionFile,error:studentSubmitErrorMsg,setText:setStudentSubmissionText,setFile:setStudentSubmissionFile,setError:setStudentSubmitErrorMsg,setSuccess:setStudentSubmitSuccessMsg};};`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
 {
-  const ack = deferred();
-  const f = resubmission(() => ack.promise);
-  const pending = f.confirm();
-  await flush();
-  assert.equal(f.state.open, true);
-  ack.resolve({ok: true, refreshed: true});
-  await pending;
-  assert.equal(f.state.text, '');
-  assert.equal(f.state.file, null);
-  assert.equal(f.state.open, false);
-  assert.match(f.state.success, /クリア/);
+ const context={studentDrafts:{},emptySubmissionDraft:{text:'',file:null,error:'',success:'',editing:false,removeAttachment:false},currentStudentId:'s',setStudentDrafts:action=>{context.studentDrafts=action(context.studentDrafts);}};
+ vm.createContext(context);vm.runInContext(bindingCode,context);
+ const a={id:1,submissions:{}},b={id:2,submissions:{}};
+ const aFile={name:'a.pdf'},bFile={name:'b.docx'};
+ context.bind(a).setText('Aの本文');context.bind(a).setFile(aFile);context.bind(a).setError('Aのエラー');
+ assert.equal(context.bind(b).text,'');assert.equal(context.bind(b).file,null);assert.equal(context.bind(b).error,'');
+ context.bind(b).setText('Bの本文');context.bind(b).setFile(bFile);context.bind(b).setSuccess('Bの保存成功');
+ assert.equal(context.bind(a).text,'Aの本文');assert.equal(context.bind(a).file,aFile);assert.equal(context.bind(a).error,'Aのエラー');
+ assert.equal(context.bind(b).file,bFile);assert.equal(context.studentDrafts[1].success,'');
+ context.bind(a).setText('');context.bind(a).setFile(null);
+ assert.equal(context.bind(b).text,'Bの本文');assert.equal(context.bind(b).file,bFile,'saving A must not clear B');
 }
 
 const cloud = ts.createSourceFile('cloud.tsx', readFileSync(new URL('../cloud.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
