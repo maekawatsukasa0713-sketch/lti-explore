@@ -12,9 +12,9 @@ import { ReviewPanels } from './ReviewPanels';
 import { analysisInput, invokeResearchAI } from './research-ai';
 import { ScholarlySearch } from './ScholarlySearch';
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {PublishedFields,AdminAnalytics} from './analytics';
-import { CloudGate, useCloud, useCloudList, saveMyProfile, uploadPdf, PdfView, type Profile } from './cloud';
+import { CloudGate, useCloud, useCloudList, saveMyProfile, uploadPdf, PdfView, type Profile, type SaveResult } from './cloud';
 import { Home, BarChart3, Users, Settings, Search, LogOut, Lock, User, Check, ArrowLeft, UserCheck, ShieldCheck, UserCog, Building2, BookOpen, FileText, Bot, Trophy, ChevronRight, Upload, Send, Edit3, Trash2, CheckCircle2, XCircle, PieChart, FileUp, Eye, EyeOff, Clock, FileCheck, Globe, LockKeyhole, AlertCircle, Lightbulb, FlaskConical, GripVertical, PanelLeftClose, PanelLeftOpen, Megaphone, CalendarDays, ExternalLink } from 'lucide-react';
 
 // ----------------------------------------
@@ -689,12 +689,14 @@ const ResubmitConfirmModal = ({
   setShowResubmitConfirmModal: (v: boolean) => void;
   selectedAssignmentId: number | null;
   assignments: AssignmentData[];
-  setAssignments: (v: AssignmentData[]) => void;
+  setAssignments: (v: AssignmentData[]) => Promise<SaveResult>;
   currentStudentId: string;
   setStudentSubmissionText: (v: string) => void;
   setStudentSubmissionFile: (v: File | null) => void;
   setStudentSubmitSuccessMsg: (v: string) => void;
 }) => {
+  const pending = useRef(false);
+  const [saving, setSaving] = useState(false);
   if (!showResubmitConfirmModal) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -710,15 +712,21 @@ const ResubmitConfirmModal = ({
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <button
+            disabled={saving}
             onClick={() => setShowResubmitConfirmModal(false)}
             className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-colors"
           >
             戻る
           </button>
           <button
-            onClick={() => {
-              if (selectedAssignmentId) {
-                setAssignments(assignments.map(a => {
+            disabled={saving}
+            onClick={async () => {
+              if (pending.current) return;
+              pending.current = true;
+              setSaving(true);
+              try {
+              if (selectedAssignmentId !== null) {
+                const result = await setAssignments(assignments.map(a => {
                   if (a.id === selectedAssignmentId && a.submissions[currentStudentId]) {
                     const newSubmissions = { ...a.submissions };
                     delete newSubmissions[currentStudentId];
@@ -726,15 +734,17 @@ const ResubmitConfirmModal = ({
                   }
                   return a;
                 }));
+                if (!result.ok) return;
                 setStudentSubmissionText('');
                 setStudentSubmissionFile(null);
-                setStudentSubmitSuccessMsg('前回の提出をクリアしました。新しい内容を入力して提出してください。');
+                setStudentSubmitSuccessMsg(result.refreshed ? '前回の提出をクリアしました。新しい内容を入力して提出してください。' : '前回の提出をクリアしました。保存済みデータを再読み込みしてください。');
               }
               setShowResubmitConfirmModal(false);
+              } finally { pending.current = false; setSaving(false); }
             }}
             className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors shadow-sm"
           >
-            承認する
+            {saving ? '処理中…' : '承認する'}
           </button>
         </div>
       </div>
@@ -852,7 +862,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   // ----------------------------------------
   const [ltiAdminUsers, setLtiAdminUsers] = useCloudList<LtiAdminUser[]>('lti_admin_users', DEFAULT_LTI_ADMIN_USERS);
   const [papers, setPapers] = useCloudList<PublicPaper[]>('lti_papers', DEFAULT_PAPERS);
-  const [assignments, setAssignments] = useCloudList<AssignmentData[]>('lti_assignments', DEFAULT_ASSIGNMENTS);
+  const [assignments, setAssignments, saveAssignments] = useCloudList<AssignmentData[]>('lti_assignments', DEFAULT_ASSIGNMENTS);
   const [teachingMaterials, setTeachingMaterials] = useCloudList<TeachingMaterial[]>('lti_teaching_materials', DEFAULT_TEACHING_MATERIALS);
   const [teachersList, setTeachersList] = useCloudList('lti_teachers_list', generateInitialTeachers());
   const [studentsList, setStudentsList] = useCloudList('lti_students_list', generateInitialStudents());
@@ -1323,6 +1333,10 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
   const [studentSubmissionText, setStudentSubmissionText] = useState('');
   const [studentSubmissionFile, setStudentSubmissionFile] = useState<File | null>(null);
   const [studentSubmitSuccessMsg, setStudentSubmitSuccessMsg] = useState('');
+  const [studentSubmitErrorMsg, setStudentSubmitErrorMsg] = useState('');
+  const [studentSubmitting, setStudentSubmitting] = useState(false);
+  const studentSubmissionPending = useRef(false);
+  const uploadedStudentSubmission = useRef<{file:File;assignmentId:number;studentId:string;path:string}|null>(null);
 
   // 生徒自身の表示名変更
   const handleStudentProfileUpdate = async (e: React.FormEvent) => {
@@ -4254,7 +4268,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
           setShowResubmitConfirmModal={setShowResubmitConfirmModal}
           selectedAssignmentId={selectedAssignmentId}
           assignments={assignments}
-          setAssignments={setAssignments}
+          setAssignments={saveAssignments}
           currentStudentId={currentStudentId}
           setStudentSubmissionText={setStudentSubmissionText}
           setStudentSubmissionFile={setStudentSubmissionFile}
@@ -4484,16 +4498,32 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                             <form
                               onSubmit={async (e) => {
                                 e.preventDefault();
+                                if (studentSubmissionPending.current) return;
                                 if (!studentSubmissionText.trim() && !studentSubmissionFile) {
                                   alert('テキストを入力するかファイルを選択してください。');
                                   return;
                                 }
 
+                                studentSubmissionPending.current = true;
+                                setStudentSubmitting(true);
+                                setStudentSubmitSuccessMsg('');
+                                setStudentSubmitErrorMsg('');
+                                const text = studentSubmissionText;
+                                const file = studentSubmissionFile;
+                                try {
                                 let storagePath: string | undefined;
-                                try { if (studentSubmissionFile) storagePath = await uploadPdf(studentSubmissionFile); } catch (error) { alert((error as Error).message); return; }
+                                if (file) {
+                                  const uploaded = uploadedStudentSubmission.current;
+                                  if (uploaded?.file === file && uploaded.assignmentId === assign.id && uploaded.studentId === currentStudentId) {
+                                    storagePath = uploaded.path;
+                                  } else {
+                                    storagePath = await uploadPdf(file);
+                                    uploadedStudentSubmission.current = {file, assignmentId:assign.id, studentId:currentStudentId, path:storagePath};
+                                  }
+                                }
                                 const nowStr = new Date().toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-                                setAssignments(assignments.map(a => {
+                                const result = await saveAssignments(assignments.map(a => {
                                   if (a.id === assign.id) {
                                     return {
                                       ...a,
@@ -4501,8 +4531,8 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                         ...a.submissions,
                                         [currentStudentId]: {
                                           storagePath,
-                                          submittedText: studentSubmissionText,
-                                          submittedFile: studentSubmissionFile ? { name: studentSubmissionFile.name } : null,
+                                          submittedText: text,
+                                          submittedFile: file ? { name: file.name } : null,
                                           status: '提出済み',
                                           submittedAt: nowStr,
                                           late: Date.now()>new Date(assign.deadline.replace(/\//g,'-')+'T23:59:59+09:00').getTime()
@@ -4512,15 +4542,26 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                                   }
                                   return a;
                                 }));
-
+                                if (!result.ok) {
+                                  setStudentSubmitErrorMsg('提出の保存を確認できませんでした。入力内容は残しています。保存済みデータを確認してから、再試行してください。');
+                                  return;
+                                }
+                                uploadedStudentSubmission.current = null;
                                 setStudentSubmissionText('');
                                 setStudentSubmissionFile(null);
-                                setStudentSubmitSuccessMsg('課題を正常に提出しました！');
+                                setStudentSubmitSuccessMsg(result.refreshed ? '課題を正常に提出しました！' : '課題は保存されました。表示を更新できなかったため、再提出せず保存済みデータを再読み込みしてください。');
                                 setTimeout(() => setStudentSubmitSuccessMsg(''), 4000);
+                                } catch (error) {
+                                  setStudentSubmitErrorMsg(error instanceof Error ? error.message : '提出を完了できませんでした。入力内容は残しています。');
+                                } finally {
+                                  studentSubmissionPending.current = false;
+                                  setStudentSubmitting(false);
+                                }
                               }}
                               className="space-y-3 pt-2 border-t border-gray-100"
                             >
                               <textarea
+                                disabled={studentSubmitting}
                                 value={studentSubmissionText}
                                 onChange={(e) => setStudentSubmissionText(e.target.value)}
                                 placeholder="提出用コメント・レポート文章を入力..."
@@ -4531,6 +4572,7 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
                               <div className="space-y-1">
                                 <input
                                   type="file"
+                                  disabled={studentSubmitting}
                                   accept=".pdf,.docx"
                                   onChange={(e) => {
                                     if (e.target.files && e.target.files[0]) {
@@ -4543,10 +4585,12 @@ function ConnectedApp({profile, signOut}: {profile: Profile; signOut: () => Prom
 
                               <button
                                 type="submit"
+                                disabled={studentSubmitting}
                                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors shadow-sm"
                               >
-                                課題を提出する
+                                {studentSubmitting ? '提出を保存中…' : '課題を提出する'}
                               </button>
+                              {studentSubmitErrorMsg && <p role="alert" className="text-xs text-rose-700">{studentSubmitErrorMsg}</p>}
                             </form>
                           )}
                         </div>

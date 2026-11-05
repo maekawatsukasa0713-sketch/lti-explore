@@ -10,7 +10,8 @@ export {supabase} from './client';
 export type Profile = { deleted_at?:string|null; attendance_number?:number|null; login_id?:string|null; must_change_password?:boolean; initial_password_expires_at?:string|null; session_valid_after?:string; id:string; school_id:string|null; role:'admin'|'teacher'|'student'; active:boolean; name:string; class:string; dept:string; theme:string };
 type Row = { kind:string; id:string; owner_id:string; data:any; version:number };
 type School = {id:string;name:string;feature_settings?:FeatureSettings;deleted_at?:string|null};
-type Store = { profile:Profile; profiles:Profile[]; schools:School[]; rows:Row[]; save:(kind:string, before:any[], next:any[])=>Promise<void>; reload:()=>Promise<void>; signOut:()=>Promise<void> };
+export type SaveResult = {ok:true;refreshed:boolean}|{ok:false;error:string};
+type Store = { profile:Profile; profiles:Profile[]; schools:School[]; rows:Row[]; save:(kind:string, before:any[], next:any[])=>Promise<SaveResult>; reload:()=>Promise<void>; signOut:()=>Promise<void> };
 const Cloud = createContext<Store|null>(null);
 export function useCloud(){const c=useContext(Cloud);if(!c)throw new Error('ログインが必要です');return c;}
 const kinds:Record<string,string> = {lti_papers:'papers',lti_assignments:'assignments',lti_teaching_materials:'materials',lti_contests:'contests',lti_notices:'notices',lti_student_feedback_messages:'feedback',lti_academic_references:'references'};
@@ -26,13 +27,14 @@ function values(store:Store,key:string):any[] {
  if(kind==='assignments')return items.map(a=>({...a,submissions:Object.fromEntries(store.rows.filter(r=>r.kind==='submissions' && String(r.data.assignmentId)===String(a.id)).map(r=>[r.data.studentId,r.data]))}));
  return items;
 }
-export function useCloudList<T>(key:string,_initialValue:T):[T,React.Dispatch<React.SetStateAction<T>>] {
+export function useCloudList<T>(key:string,_initialValue:T):[T,React.Dispatch<React.SetStateAction<T>>,(action:React.SetStateAction<T>)=>Promise<SaveResult>] {
  const store=useCloud(); const current=values(store,key) as T;
- const set:React.Dispatch<React.SetStateAction<T>>=(action)=>{
+ const save=async(action:React.SetStateAction<T>):Promise<SaveResult>=>{
   const next=typeof action==='function'?(action as (v:T)=>T)(current):action;
-  void store.save(kinds[key]||key,current as any[],next as any[]);
+  return store.save(kinds[key]||key,current as any[],next as any[]);
  };
- return [current,set];
+ const set:React.Dispatch<React.SetStateAction<T>>=(action)=>{void save(action);};
+ return [current,set,save];
 }
 export async function saveMyProfile(name:string,password:string) {
  const {data:{user}}=await supabase.auth.getUser(); if(!user)throw new Error('再ログインしてください');
@@ -123,6 +125,7 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
  const [profile,setProfile]=useState<Profile|null>(null);const [profiles,setProfiles]=useState<Profile[]>([]);const [schools,setSchools]=useState<School[]>([]);const [rows,setRows]=useState<Row[]>([]);
  const [dataReady,setDataReady]=useState(false);const [slow,setSlow]=useState(false);
  const [loading,setLoading]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [authError,setAuthError]=useState('');
+ const [savedButRefreshFailed,setSavedButRefreshFailed]=useState(false);
  const [entry,setEntry]=useState(false);const [loginType,setLoginType]=useState<'school'|'email'>('school');const [loginSchool,setLoginSchool]=useState(()=>{try{return localStorage.getItem('lti-login-school')||'';}catch{return '';}});const [loginId,setLoginId]=useState('');const [aal,setAal]=useState<string|null>(null);const [nextAal,setNextAal]=useState<string|null>(null);const [showMfa,setShowMfa]=useState(false);const [showPassword,setShowPassword]=useState(false);
  const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [message,setMessage]=useState('');const [mode,setMode]=useState<'login'|'reset'>('login');const [recovery,setRecovery]=useState(recoveryOnArrival);const [passwordAgain,setPasswordAgain]=useState('');
  const ref=useRef<Row[]>([]);const lock=useRef(false);const generation=useRef(0);
@@ -131,7 +134,7 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
  const waiting=initial||!!session&&(!profile||!aal||loading);
  useEffect(()=>{setSlow(false);if(!waiting)return;const timer=setTimeout(()=>setSlow(true),15000);return()=>clearTimeout(timer);},[waiting,userId]);
  useEffect(()=>{let alive=true;setAal(null);setNextAal(null);if(session)supabase.auth.mfa.getAuthenticatorAssuranceLevel().then(({data,error})=>{if(alive){if(error)setError(error.message);else{setAal(data.currentLevel);setNextAal(data.nextLevel);}}});return()=>{alive=false;};},[session?.access_token]);
- const reload=async()=>{
+ const reload=async(throwOnError=false)=>{
   const token=++generation.current;
   if(!userId){setProfile(null);setRows([]);ref.current=[];setProfiles([]);setSchools([]);return;}
   setLoading(true);
@@ -143,13 +146,14 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
    const [pr,sc]=await Promise.all([listAll('lti_profiles'),listAll('lti_schools')]);
    const all:Row[]=[];for(let offset=0;;offset+=500){const r=await supabase.from('lti_records').select('*').order('kind').order('id').range(offset,offset+499);if(r.error)throw r.error;all.push(...r.data);if(r.data.length<500)break;}
    if(token!==generation.current)return;setProfiles(pr.data.filter(p=>!p.deleted_at));setSchools(sc.data.filter(s=>!s.deleted_at));setRows(all);ref.current=all;setDataReady(true);setError('');
-  }catch(e){if(token===generation.current)setError(e instanceof Error?e.message:'データを取得できませんでした');}finally{if(token===generation.current)setLoading(false);}
+  }catch(e){if(token===generation.current)setError(e instanceof Error?e.message:'データを取得できませんでした');if(throwOnError)throw e;}finally{if(token===generation.current)setLoading(false);}
  };
  useEffect(()=>{setDataReady(false);setProfile(null);setRows([]);ref.current=[];setError('');void reload();return()=>{generation.current++;};},[userId]);
  const signOut=async()=>{generation.current++;const {error}=await supabase.auth.signOut();if(error){setError(error.message);return;}setSession(null);setProfile(null);setPassword('');setRows([]);ref.current=[];setRecovery(false);};
- const save=async(kind:string,before:any[],next:any[])=>{
-  if(lock.current){setError('別の保存が処理中です。完了後にもう一度操作してください。');return;}
-  lock.current=true;setBusy(true);setError('');
+ const save=async(kind:string,before:any[],next:any[]):Promise<SaveResult>=>{
+  if(lock.current){const message='別の保存が処理中です。完了後にもう一度操作してください。';setError(message);return {ok:false,error:message};}
+  lock.current=true;setBusy(true);setError('');setSavedButRefreshFailed(false);
+  let committed=false;
   try {
    if(!Object.values(kinds).includes(kind))throw new Error('アカウント管理は画面上部の「学校・利用者管理」を使用してください。パスワードは本人が変更します。');
    const ops:any[]=[];
@@ -170,8 +174,12 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
     const threads=(items:any[])=>items.filter(p=>p.messages?.length).map(p=>({id:String(p.id),schoolId:p.schoolId,messages:p.messages}));
     diff('paper_threads',threads(before),threads(next));
    }else diff(kind,before,next);
-   if(ops.length){const {error}=await supabase.rpc('lti_save_records',{ops});if(error)throw error;await reload();}
-  }catch(e){setError(e instanceof Error?e.message:(e as any)?.message||'保存できませんでした');}
+   if(ops.length){const {error}=await supabase.rpc('lti_save_records',{ops});if(error)throw error;committed=true;await reload(true);}
+   return {ok:true,refreshed:true};
+  }catch(e){
+   if(committed){setSavedButRefreshFailed(true);setError('保存は完了していますが、表示を更新できませんでした。再送信せず、保存済みデータを再読み込みしてください。');return {ok:true,refreshed:false};}
+   const message=e instanceof Error?e.message:(e as any)?.message||'保存を確認できませんでした';setError(message);return {ok:false,error:message};
+  }
   finally{lock.current=false;setBusy(false);}
  };
  const auth=async(e:React.FormEvent)=>{e.preventDefault();setAuthError('');setMessage('');setBusy(true);try{
@@ -233,5 +241,5 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
  if(!profile.active)return <div className="max-w-lg mx-auto p-8 space-y-4"><h1 className="text-xl font-bold">利用開始の承認待ちです</h1><p>学校と権限が設定されると利用できます。次の利用者IDをLTI運営に伝えてください。</p><code className="block break-all">{profile.id}</code><button onClick={()=>void reload()} className="p-3 bg-emerald-100 rounded-xl">承認状態を確認</button><button onClick={()=>void signOut()} className="p-3">ログアウト</button></div>;
  if(!dataReady)return waitingScreen('学校・利用者データを読み込み中…');
  const store:Store={profile,profiles,schools,rows,save,reload,signOut};
- return <Cloud.Provider value={store}>{APP_ENV==='staging'&&<div className="fixed top-0 inset-x-0 z-[200] bg-amber-400 text-amber-950 text-center text-xs font-extrabold tracking-wide py-1.5 shadow">STAGING / 試験環境 — ここでの操作は本番データに影響しません</div>}<div className="lti-connection-bar fixed bottom-3 right-3 z-[80] flex gap-2 items-center rounded-xl border bg-white p-2 shadow text-xs"><span>{busy?'保存中…':loading?'読込中…':'Supabase接続'}</span><button disabled={busy||loading} onClick={()=>void reload()} className="underline">更新</button><button onClick={()=>setShowPassword(true)} className="underline">パスワード変更</button>{profile.role==='admin'&&<AccountManagement profiles={profiles} schools={schools} profile={profile} reload={reload}/>}</div>{children(profile,signOut)}{busy&&<div className="fixed inset-0 bg-white/40 z-[90] flex items-center justify-center" role="status">保存中…</div>}{error&&<div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-5"><div className="bg-white p-6 rounded-xl max-w-lg space-y-3"><h2 className="font-bold">操作を完了できませんでした</h2><p role="alert">{error}</p><p className="text-sm">画面内に完了メッセージがあっても、このエラーが出た操作は保存を確認できていません。</p><button onClick={()=>void reload()} className="bg-emerald-100 p-3 rounded-xl">保存済みデータを再読み込み</button></div></div>}</Cloud.Provider>;
+ return <Cloud.Provider value={store}>{APP_ENV==='staging'&&<div className="fixed top-0 inset-x-0 z-[200] bg-amber-400 text-amber-950 text-center text-xs font-extrabold tracking-wide py-1.5 shadow">STAGING / 試験環境 — ここでの操作は本番データに影響しません</div>}<div className="lti-connection-bar fixed bottom-3 right-3 z-[80] flex gap-2 items-center rounded-xl border bg-white p-2 shadow text-xs"><span>{busy?'保存中…':loading?'読込中…':'Supabase接続'}</span><button disabled={busy||loading} onClick={()=>void reload()} className="underline">更新</button><button onClick={()=>setShowPassword(true)} className="underline">パスワード変更</button>{profile.role==='admin'&&<AccountManagement profiles={profiles} schools={schools} profile={profile} reload={reload}/>}</div>{children(profile,signOut)}{busy&&<div className="fixed inset-0 bg-white/40 z-[90] flex items-center justify-center" role="status">保存中…</div>}{error&&<div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-5"><div className="bg-white p-6 rounded-xl max-w-lg space-y-3"><h2 className="font-bold">{savedButRefreshFailed?'保存済みデータの表示を更新できませんでした':'操作を完了できませんでした'}</h2><p role="alert">{error}</p>{!savedButRefreshFailed&&<p className="text-sm">画面内に完了メッセージがあっても、このエラーが出た操作は保存を確認できていません。</p>}<button onClick={()=>void reload()} className="bg-emerald-100 p-3 rounded-xl">保存済みデータを再読み込み</button></div></div>}</Cloud.Provider>;
 }
