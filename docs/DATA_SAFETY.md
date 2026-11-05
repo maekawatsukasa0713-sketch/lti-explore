@@ -1,6 +1,10 @@
 # LTI Explore データ保護・リリース運用
 
-## 最新のStorage検証（2026-10-09）
+## Storage保存先の切替（2026-11-05の設定変更）
+
+現本番の東京 `qzowxrmrxyjifoabjryr` は変更せず、Storageバックアップ先を停止中の試験環境から旧本番 `ozmulwqzybhiekmolvyk` の新しい専用非公開バケットへ切り替えます。旧環境のアプリ用DB・Auth・既存バケットと、停止中の試験環境にある過去バックアップは保持します。新保存先での初回バックアップ・隔離復元の実行成功は、workflow結果で別途確認します。
+
+## 切替前のStorage検証（2026-10-09の履歴）
 
 全539件・446,601,138バイトのバックアップが成功しました。全件を非公開の試験用保存先へ実際に復元し、SHA-256・サイズ・表示用メタデータを照合。PDF538件の先頭ページとWord1件の文書XMLを開き、一時コピー539件と一時バケットも削除済みです。本番・試験の既存データと元バックアップは処理前後で一致しました。
 
@@ -10,7 +14,7 @@
 
 - 本番URLは https://explore.labtoimpact.com/ 。supabase-config.tsの本番ホスト一覧またはVITE_LTI_ENVの明示指定で接続先を選びます。
 - 本番サイトは東京（ap-northeast-1）の Supabase `qzowxrmrxyjifoabjryr` を利用します。
-- 旧本番 `ozmulwqzybhiekmolvyk`（シンガポール）は復旧用に保持します。東京で新規書込み後に旧環境へ戻す場合は、差分保全・再同期が必要です。
+- 旧本番 `ozmulwqzybhiekmolvyk`（シンガポール）は復旧用に保持し、専用の非公開 `lti-production-backup` にだけ新しいバックアップを追加します。既存アプリデータ・Auth・`lti-documents` は変更しません。東京で新規書込み後に旧環境へ戻す場合は、差分保全・再同期が必要です。
 - Vercel Preview、`staging` ブランチ、localhost は、VITE_LTI_ENVの上書きがない場合、試験 Supabase `bvjjnzhhxieyxkeorurb` を利用します。
 - 試験環境では画面上部に **STAGING / 試験環境** バナーを表示します。
 - Previewの環境変数を変更するときは、本番接続を明示するVITE_LTI_ENV=productionが入っていないことも確認します。
@@ -25,7 +29,7 @@ DB の各レコードには実ファイルの `storagePath` / `attachmentPath` /
 本番組織は Supabase Pro のため、Postgres DB は毎日自動バックアップされ、直近 7 日分を復元できます。
 ただし Supabase の DB バックアップには Storage の実ファイル本体は含まれません。
 
-StorageはGitHub Actions `.github/workflows/storage-backup.yml` で毎日03:30 JSTに実行し、本番 `lti-documents` から試験プロジェクト内の専用・非公開 `lti-production-backup` バケットへ内容別オブジェクトと時点manifestを追加します。手動実行にも対応します。
+StorageはGitHub Actions `.github/workflows/storage-backup.yml` で毎日03:30 JSTに実行し、本番 `lti-documents` から旧本番 `ozmulwqzybhiekmolvyk` の専用・非公開 `lti-production-backup` バケットへ内容別オブジェクトと時点manifestを追加します。手動実行にも対応します。新規バケットは正規S3 APIで作成し、毎回秘密を含まない検証ファイルでStorage public URLの匿名アクセス拒否を確認してから本番ファイルをコピーします。
 2026-11-05の変更から、同名ファイルの変更でも旧内容を上書きせず、従来の同名バックアップと全世代を保持します。本番で削除されたファイルの旧版も削除しません。完了マーカーのない途中runは復元ポイントとして扱いません。
 [世代方式・指定snapshot復元・通知と保持の運用](storage-snapshots.md)を参照してください。scheduleの設定と、実際のバックアップ／復元成功は区別して実行結果を確認します。
 
@@ -33,9 +37,9 @@ StorageはGitHub Actions `.github/workflows/storage-backup.yml` で毎日03:30 J
 
 - `MIGRATION_TARGET_S3_ACCESS_KEY_ID`（現在の東京本番）
 - `MIGRATION_TARGET_S3_SECRET_ACCESS_KEY`（現在の東京本番）
-- 旧 `PROD_S3_*` は移行元の復旧用に保持。通常のStorageバックアップは使用しません。
-- `TEST_S3_ACCESS_KEY_ID`
-- `TEST_S3_SECRET_ACCESS_KEY`
+- `PROD_S3_ACCESS_KEY_ID`（旧本番＝今回のバックアップ保存先。スクリプトへは `BACKUP_ACCESS_KEY_ID` として渡す）
+- `PROD_S3_SECRET_ACCESS_KEY`（同上、`BACKUP_SECRET_ACCESS_KEY` として渡す）
+- 旧 `TEST_S3_ACCESS_KEY_ID` / `TEST_S3_SECRET_ACCESS_KEY` は停止中の試験環境にある過去バックアップの復旧用に保持し、現行のバックアップ／復元workflowでは使いません。
 
 Secret 値はコードやチャットに貼らず GitHub Secrets のみに登録します。
 未設定の場合は失敗終了します。元・既存blob・コピー後の実ファイルをSHA-256で照合し、内容が変われば別のSHAキーへ追加します。既存SHAキーの不一致は上書きせず失敗します。認証・通信・照合の失敗もジョブを失敗させます。集計のfailedが0、completedがtrueであることを確認してください。全本体の読取はダウンロード通信を伴い、世代保持の自動削除はありません。

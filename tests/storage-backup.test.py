@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import types
 import unittest
+from urllib.error import HTTPError, URLError
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('backup',Path(__file__).resolve().parents[1]/'scripts/backup-storage.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
@@ -112,18 +113,18 @@ class BackupTests(unittest.TestCase):
         source=Memory({'a':b'paper'});source.changed=True;self.assertEqual(run(source,Memory({}))['failed'],1)
 
 class ClientConfigurationTests(unittest.TestCase):
-    def configured_backup(self, regions, missing_credential=None):
+    def configured_backup(self, regions, missing_credential=None, privacy=True):
         # Exercise main and the byte-verifying copy with in-memory S3 clients.
         # Isolate the environment so no real credentials or network are used.
         env={
-            'PROD_ENDPOINT':'https://production.example/storage/v1/s3',
-            'STAGING_ENDPOINT':'https://staging.example/storage/v1/s3',
+            'PROD_ENDPOINT':module.SOURCE_ENDPOINT,
+            'BACKUP_ENDPOINT':module.BACKUP_ENDPOINT,
             'PROD_ACCESS_KEY_ID':'prod-access',
             'PROD_SECRET_ACCESS_KEY':'prod-secret',
-            'STAGING_ACCESS_KEY_ID':'test-access',
-            'STAGING_SECRET_ACCESS_KEY':'test-secret',
-            'SOURCE_BUCKET':'source',
-            'BACKUP_BUCKET':'backup',
+            'BACKUP_ACCESS_KEY_ID':'test-access',
+            'BACKUP_SECRET_ACCESS_KEY':'test-secret',
+            'SOURCE_BUCKET':module.SOURCE_BUCKET,
+            'BACKUP_BUCKET':module.BACKUP_BUCKET,
             **regions,
         }
         if missing_credential:
@@ -135,16 +136,23 @@ class ClientConfigurationTests(unittest.TestCase):
         boto3=types.ModuleType('boto3');boto3.client=client
         config=types.ModuleType('botocore.config');config.Config=lambda **kwargs:kwargs
         imports={'boto3':boto3,'botocore':types.ModuleType('botocore'),'botocore.config':config}
-        with patch.dict(sys.modules,imports),patch.dict(module.os.environ,env,clear=True),contextlib.redirect_stdout(io.StringIO()) as output:
+        with patch.dict(sys.modules,imports),patch.dict(module.os.environ,env,clear=True),patch.object(module,'public_access_blocked',return_value=privacy),contextlib.redirect_stdout(io.StringIO()) as output:
             if missing_credential:
                 with self.assertRaisesRegex(SystemExit,'credentials are incomplete'):
                     module.main()
                 self.assertEqual(calls,[])
+            elif not privacy:
+                with self.assertRaises(SystemExit):module.main()
+                self.assertEqual(source.items,{'a':b'paper'})
+                self.assertEqual(dest.uploads,1,'only the non-sensitive canary may be uploaded')
+                self.assertTrue(all(key.startswith(module.SNAPSHOT_PREFIX+'privacy-checks/') for key in dest.items))
+                self.assertNotIn('"completed": true',output.getvalue())
             else:
                 module.main()
                 self.assertEqual(source.items,{'a':b'paper'})
                 self.assertEqual(dest.items[module.content_key(hashlib.sha256(b'paper').hexdigest())],b'paper')
-                self.assertEqual(dest.uploads,3)
+                self.assertEqual(dest.uploads,4)
+                self.assertIn('"private_access_verified": true',output.getvalue())
                 self.assertIn('"failed": 0',output.getvalue())
                 self.assertIn('"verified_bytes": 5',output.getvalue())
         self.assertNotIn('prod-secret',output.getvalue())
@@ -152,11 +160,11 @@ class ClientConfigurationTests(unittest.TestCase):
         return calls
 
     def test_tokyo_source_and_singapore_backup_have_independent_regions(self):
-        source,dest=self.configured_backup({'PROD_AWS_REGION':'ap-northeast-1','TEST_AWS_REGION':'ap-southeast-1','AWS_REGION':'us-east-1'})
+        source,dest=self.configured_backup({'PROD_AWS_REGION':'ap-northeast-1','BACKUP_AWS_REGION':'ap-southeast-1','AWS_REGION':'us-east-1'})
         self.assertEqual(source['region_name'],'ap-northeast-1')
         self.assertEqual(dest['region_name'],'ap-southeast-1')
-        self.assertEqual(source['endpoint_url'],'https://production.example/storage/v1/s3')
-        self.assertEqual(dest['endpoint_url'],'https://staging.example/storage/v1/s3')
+        self.assertEqual(source['endpoint_url'],module.SOURCE_ENDPOINT)
+        self.assertEqual(dest['endpoint_url'],module.BACKUP_ENDPOINT)
         self.assertEqual(source['aws_access_key_id'],'prod-access')
         self.assertEqual(dest['aws_access_key_id'],'test-access')
         self.assertEqual(source['config'],{'signature_version':'s3v4','s3':{'addressing_style':'path'},
@@ -173,13 +181,111 @@ class ClientConfigurationTests(unittest.TestCase):
         self.assertEqual([call['region_name'] for call in calls],['ap-northeast-1','ap-southeast-1'])
 
     def test_missing_or_empty_regions_use_existing_workflow_region(self):
-        for regions in ({},{'PROD_AWS_REGION':'','TEST_AWS_REGION':'','AWS_REGION':''}):
+        for regions in ({},{'PROD_AWS_REGION':'','BACKUP_AWS_REGION':'','AWS_REGION':''}):
             with self.subTest(regions=regions):
                 calls=self.configured_backup(regions)
                 self.assertEqual([call['region_name'] for call in calls],['ap-southeast-1','ap-southeast-1'])
 
     def test_region_overrides_never_bypass_missing_credentials(self):
-        self.configured_backup({'PROD_AWS_REGION':'ap-northeast-1','TEST_AWS_REGION':'ap-southeast-1'},missing_credential='PROD_SECRET_ACCESS_KEY')
+        for missing in ('PROD_SECRET_ACCESS_KEY','BACKUP_SECRET_ACCESS_KEY'):
+            self.configured_backup({'PROD_AWS_REGION':'ap-northeast-1','BACKUP_AWS_REGION':'ap-southeast-1'},missing_credential=missing)
+
+    def test_main_never_copies_production_documents_if_public_probe_fails(self):
+        self.configured_backup({'PROD_AWS_REGION':'ap-northeast-1','BACKUP_AWS_REGION':'ap-southeast-1'},privacy=False)
+
+
+class DestinationPreparationTests(unittest.TestCase):
+    class Destination(Memory):
+        def __init__(self, missing=False, error=None):
+            super().__init__({'existing-backup':b'old-good'})
+            self.missing=missing; self.error=error; self.creates=[]
+        def head_bucket(self,Bucket):
+            if self.error:raise self.error
+            if self.missing:raise RemoteFailure('NoSuchBucket',404)
+        def create_bucket(self,**kwargs):
+            self.creates.append(kwargs); self.missing=False
+
+    def prepare(self,dest,probe=lambda *_:True):
+        return module.prepare_backup_destination(dest,module.BACKUP_ENDPOINT,module.BACKUP_BUCKET,probe)
+
+    def test_creates_only_missing_fixed_bucket_then_verifies_synthetic_canary(self):
+        dest=self.Destination(missing=True); probes=[]
+        result=self.prepare(dest,lambda bucket,key:probes.append((bucket,key)) or True)
+        self.assertEqual(dest.creates,[{'Bucket':module.BACKUP_BUCKET}])
+        self.assertTrue(result['backup_bucket_created'] and result['private_access_verified'])
+        self.assertEqual(dest.items['existing-backup'],b'old-good')
+        self.assertEqual(len(probes),1)
+        self.assertTrue(probes[0][1].startswith(module.SNAPSHOT_PREFIX+'privacy-checks/'))
+        self.assertIn(b'Synthetic non-sensitive',dest.items[probes[0][1]])
+
+    def test_existing_bucket_is_not_reconfigured_and_each_run_probes_fresh_canary(self):
+        dest=self.Destination(); self.prepare(dest); old=dest.items.copy(); self.prepare(dest)
+        self.assertEqual(dest.creates,[]); self.assertEqual(dest.uploads,2)
+        self.assertTrue(all(dest.items[key]==value for key,value in old.items()))
+
+    def test_denied_or_uncertain_bucket_does_not_create_or_upload(self):
+        for code,status in [('AccessDenied',403),('BadRequest',400),(None,400),('InternalError',500),(None,540),('NoSuchBucket',500),('AccessDenied',404)]:
+            with self.subTest(code=code,status=status):
+                dest=self.Destination(error=RemoteFailure(code,status))
+                with self.assertRaises(RemoteFailure):self.prepare(dest)
+                self.assertEqual(dest.creates,[]);self.assertEqual(dest.uploads,0)
+
+    def test_explicit_bucket_404_is_the_only_creation_fallback(self):
+        for code in (None,'','404','NotFound'):
+            dest=self.Destination()
+            original=dest.head_bucket; calls=[]
+            def head(**kwargs):
+                calls.append(kwargs)
+                if len(calls)==1:raise RemoteFailure(code,404)
+                return original(**kwargs)
+            dest.head_bucket=head
+            self.prepare(dest);self.assertEqual(len(dest.creates),1)
+
+    def test_wrong_endpoint_or_bucket_rejected_before_any_io(self):
+        for endpoint,bucket in [(module.SOURCE_ENDPOINT,module.BACKUP_BUCKET),(module.BACKUP_ENDPOINT,'lti-documents'),('https://bvjjnzhhxieyxkeorurb.storage.supabase.co/storage/v1/s3',module.BACKUP_BUCKET)]:
+            dest=self.Destination()
+            with self.assertRaises(ValueError):module.prepare_backup_destination(dest,endpoint,bucket)
+            self.assertEqual(dest.creates,[]);self.assertEqual(dest.uploads,0)
+
+    def test_public_canary_or_failed_probe_never_marks_private_or_deletes_anything(self):
+        for outcome in (False,URLError('fixture network error')):
+            dest=self.Destination()
+            def probe(*_):
+                if isinstance(outcome,Exception):raise outcome
+                return outcome
+            with self.assertRaises((RuntimeError,URLError)):self.prepare(dest,probe)
+            self.assertEqual(dest.uploads,1);self.assertEqual(dest.items['existing-backup'],b'old-good')
+
+    def test_corrupt_or_colliding_canary_is_not_accepted(self):
+        dest=self.Destination();dest.corrupt=True
+        with self.assertRaisesRegex(RuntimeError,'canary verification'):self.prepare(dest)
+        dest=self.Destination();key=module.SNAPSHOT_PREFIX+'privacy-checks/fixed'
+        dest.items[key]=b'do-not-replace'
+        with patch.object(module.uuid,'uuid4',return_value=types.SimpleNamespace(hex='fixed')):
+            with self.assertRaisesRegex(ValueError,'refusing overwrite'):self.prepare(dest)
+        self.assertEqual(dest.uploads,0);self.assertEqual(dest.items[key],b'do-not-replace')
+
+    def test_public_probe_uses_head_public_route_and_fails_closed(self):
+        seen=[]
+        def denied(request,timeout):
+            seen.append(request)
+            raise HTTPError(request.full_url,403,'denied',{},None)
+        with patch.object(module,'urlopen',side_effect=denied):
+            self.assertTrue(module.public_access_blocked(module.BACKUP_BUCKET,'fixture/a b'))
+        self.assertEqual(seen[0].get_method(),'HEAD')
+        self.assertEqual(seen[0].full_url,f'https://{module.BACKUP_PROJECT}.supabase.co/storage/v1/object/public/{module.BACKUP_BUCKET}/fixture/a%20b')
+        for status in (400,401,404,429,500,540):
+            with patch.object(module,'urlopen',side_effect=HTTPError('fixture',status,'failed',{},None)):
+                self.assertEqual(module.public_access_blocked(module.BACKUP_BUCKET,'key'),status in (400,401,404))
+        with patch.object(module,'urlopen',return_value=contextlib.nullcontext()):
+            self.assertFalse(module.public_access_blocked(module.BACKUP_BUCKET,'key'))
+        with patch.object(module,'urlopen',side_effect=URLError('offline')):
+            with self.assertRaises(URLError):module.public_access_blocked(module.BACKUP_BUCKET,'key')
+
+    def test_source_and_destination_are_fixed_and_different(self):
+        module.validate_backup_configuration(module.SOURCE_ENDPOINT,module.SOURCE_BUCKET,module.BACKUP_ENDPOINT,module.BACKUP_BUCKET)
+        for source_endpoint,source_bucket in [(module.BACKUP_ENDPOINT,module.SOURCE_BUCKET),(module.SOURCE_ENDPOINT,'other')]:
+            with self.assertRaises(ValueError):module.validate_backup_configuration(source_endpoint,source_bucket,module.BACKUP_ENDPOINT,module.BACKUP_BUCKET)
 
 
 class SnapshotTests(unittest.TestCase):

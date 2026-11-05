@@ -6,13 +6,17 @@ import json
 from io import BytesIO, StringIO
 from pathlib import Path
 import tempfile
+import sys
+import types
 import unittest
+from unittest.mock import patch
 from zipfile import ZipFile
 
 spec = importlib.util.spec_from_file_location('restore_storage', Path(__file__).parents[1] / 'scripts/restore-storage-test.py')
 restore = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(restore)
 TARGET = restore.target_name('123456', '1')
+SNAPSHOT_ID = 'fixture-completed-snapshot'
 
 
 class Missing(Exception):
@@ -40,6 +44,13 @@ class Client:
         self.change_source = False
         self.cleanup_error = False
         self.allow_backup_writes = False
+        self.buckets['fixture-source'] = {key: dict(value) for key,value in self.buckets[restore.BACKUP_BUCKET].items()}
+        self.allow_backup_writes = True
+        with redirect_stdout(StringIO()):
+            result = restore.backup_module.backup(self,self,'fixture-source',restore.BACKUP_BUCKET,SNAPSHOT_ID)
+        assert result['completed']
+        self.allow_backup_writes = False
+        self.writes.clear()
 
     @staticmethod
     def etag(data):
@@ -107,7 +118,7 @@ def fake_viewer(path, key, content_type):
 
 
 class RestoreTests(unittest.TestCase):
-    def run_restore(self, client, count=2, viewer=fake_viewer, probe=lambda *_: True, snapshot_id=None):
+    def run_restore(self, client, count=2, viewer=fake_viewer, probe=lambda *_: True, snapshot_id=SNAPSHOT_ID):
         with redirect_stdout(StringIO()) as log:
             result = restore.restore(client, TARGET, count, viewer=viewer, access_probe=probe, snapshot_id=snapshot_id)
         self.assertNotIn('private-owner', log.getvalue())
@@ -173,7 +184,7 @@ class RestoreTests(unittest.TestCase):
     def test_empty_source_stops_before_any_write(self):
         client = Client()
         client.buckets[restore.BACKUP_BUCKET] = {}
-        with self.assertRaises(ValueError):
+        with self.assertRaises((ValueError,Missing)):
             self.run_restore(client, count=0)
         self.assertEqual(client.writes, [])
 
@@ -216,9 +227,9 @@ class RestoreTests(unittest.TestCase):
 
     def test_recovery_cleanup_verifies_inventory_and_preserves_backup(self):
         client = Client()
-        client.buckets[TARGET] = {k: dict(v) for k,v in client.buckets[restore.BACKUP_BUCKET].items()}
+        client.buckets[TARGET] = {k: dict(v) for k,v in client.buckets['fixture-source'].items()}
         with redirect_stdout(StringIO()):
-            result = restore.cleanup_previous_run(client, TARGET, 2)
+            result = restore.cleanup_previous_run(client, TARGET, 2, snapshot_id=SNAPSHOT_ID)
         self.assertEqual(result['removed'], 2)
         self.assertTrue(result['backup_unchanged'] and result['cleanup_success'])
         self.assertIn('do-not-touch.pdf', client.buckets['lti-documents'])
@@ -227,7 +238,7 @@ class RestoreTests(unittest.TestCase):
         client = Client()
         client.buckets[TARGET] = {'unexpected.pdf': {'data': b'important'}}
         with self.assertRaises(ValueError):
-            restore.cleanup_previous_run(client, TARGET, 2)
+            restore.cleanup_previous_run(client, TARGET, 2, snapshot_id=SNAPSHOT_ID)
         self.assertEqual(client.writes, [])
 
     def test_word_document_structure_is_opened_without_extraction(self):
@@ -243,7 +254,7 @@ class RestoreTests(unittest.TestCase):
         if source is not None:
             client.buckets['snapshot-source'] = source
         elif 'snapshot-source' not in client.buckets:
-            client.buckets['snapshot-source'] = {key: dict(value) for key,value in client.buckets[restore.BACKUP_BUCKET].items()}
+            client.buckets['snapshot-source'] = {key: dict(value) for key,value in client.buckets['fixture-source'].items()}
         client.allow_backup_writes = True
         try:
             with redirect_stdout(StringIO()):
@@ -273,11 +284,14 @@ class RestoreTests(unittest.TestCase):
         self.assertTrue(result['backup_unchanged'] and result['cleanup_success'])
         self.assertTrue(all(bucket==TARGET for _,bucket in client.writes))
 
-    def test_legacy_restore_ignores_snapshot_internal_objects(self):
-        client=Client();self.make_snapshot(client)
+    def test_new_destination_requires_snapshot_and_never_falls_back_to_legacy(self):
+        client=Client()
         self.assertGreater(len(restore.snapshot(client,restore.BACKUP_BUCKET)),2)
-        result=self.run_restore(client)
-        self.assertEqual((result['restored'],result['failed']),(2,0))
+        with self.assertRaisesRegex(ValueError,'snapshot ID is required'):
+            self.run_restore(client,snapshot_id=None)
+        with self.assertRaisesRegex(ValueError,'snapshot ID is required'):
+            restore.cleanup_previous_run(client,TARGET,2)
+        self.assertEqual(client.writes,[])
 
     def test_partial_snapshot_is_rejected_before_creating_destination(self):
         client=Client();snapshot_id=self.make_snapshot(client)
@@ -316,8 +330,9 @@ class RestoreTests(unittest.TestCase):
         self.assertNotIn(TARGET,client.buckets)
 
     def test_recovery_refuses_same_names_and_sizes_with_different_bytes(self):
-        for use_snapshot in (False,True):
-            client=Client();snapshot_id=self.make_snapshot(client) if use_snapshot else None
+        for snapshot_id in (SNAPSHOT_ID,'github-987-1'):
+            client=Client()
+            if snapshot_id != SNAPSHOT_ID:self.make_snapshot(client,snapshot_id)
             plan=restore.restore_plan(client,snapshot_id)
             client.buckets[TARGET]={row['key']:{'data':b'x'*row['size']} for row in plan}
             with self.assertRaisesRegex(ValueError,'content differs'):
@@ -337,6 +352,33 @@ class RestoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'content reference'):
             self.run_restore(client,count=None,snapshot_id=snapshot_id)
         self.assertEqual(client.writes,[])
+
+
+class RestoreConfigurationTests(unittest.TestCase):
+    def test_main_uses_only_backup_project_credentials_and_requires_completed_id(self):
+        env={'BACKUP_ACCESS_KEY_ID':'backup-fixture-access','BACKUP_SECRET_ACCESS_KEY':'backup-fixture-secret',
+             'GITHUB_RUN_ID':'123456','GITHUB_RUN_ATTEMPT':'1','RESTORE_SNAPSHOT_ID':'github-987-1'}
+        calls=[]; client=object()
+        def create_client(service,**kwargs):
+            calls.append((service,kwargs));return client
+        boto3=types.ModuleType('boto3');boto3.client=create_client
+        config=types.ModuleType('botocore.config');config.Config=lambda **kwargs:kwargs
+        imports={'boto3':boto3,'botocore':types.ModuleType('botocore'),'botocore.config':config}
+        success={'failed':0,'view_failed':0,'restored':2,'expected':2}
+        with patch.dict(sys.modules,imports),patch.dict(restore.os.environ,env,clear=True),patch.object(restore,'restore',return_value=success) as run:
+            restore.main()
+            run.assert_called_once_with(client,TARGET,None,snapshot_id='github-987-1')
+        self.assertEqual(calls[0][0],'s3')
+        self.assertEqual(calls[0][1]['endpoint_url'],'https://ozmulwqzybhiekmolvyk.storage.supabase.co/storage/v1/s3')
+        self.assertEqual(calls[0][1]['region_name'],'ap-southeast-1')
+        self.assertEqual(calls[0][1]['aws_access_key_id'],'backup-fixture-access')
+        self.assertEqual(calls[0][1]['aws_secret_access_key'],'backup-fixture-secret')
+        for missing in ('RESTORE_SNAPSHOT_ID','BACKUP_ACCESS_KEY_ID','BACKUP_SECRET_ACCESS_KEY'):
+            incomplete={**env,'TEST_ACCESS_KEY_ID':'legacy-fixture-access','TEST_SECRET_ACCESS_KEY':'legacy-fixture-secret'}
+            incomplete.pop(missing);calls.clear()
+            with patch.dict(sys.modules,imports),patch.dict(restore.os.environ,incomplete,clear=True),patch.object(restore,'restore') as run:
+                with self.assertRaisesRegex(SystemExit,'configuration is incomplete'):restore.main()
+                self.assertEqual(calls,[]);run.assert_not_called()
 
 
 if __name__ == '__main__':

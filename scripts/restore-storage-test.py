@@ -1,7 +1,7 @@
-"""Restore private backups to a disposable staging bucket, verify, then clean up.
+"""Restore private snapshots to a disposable backup-project bucket, then clean up.
 
-The endpoint and source bucket are fixed. No production credentials or application
-records are used. Logs contain aggregate counts and opaque hashes, never names or
+The endpoint and source bucket are fixed. No current Tokyo production credentials
+or application records are used. Logs contain aggregate counts and opaque hashes, never names or
 file contents. PDF opening runs on the main thread (MuPDF is not thread-safe).
 """
 import hashlib
@@ -12,14 +12,11 @@ from pathlib import Path
 import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.error import HTTPError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
 from zipfile import ZipFile
 import xml.etree.ElementTree as ET
 
-STAGING_PROJECT = 'bvjjnzhhxieyxkeorurb'
-ENDPOINT = f'https://{STAGING_PROJECT}.storage.supabase.co/storage/v1/s3'
+BACKUP_PROJECT = 'ozmulwqzybhiekmolvyk'
+ENDPOINT = f'https://{BACKUP_PROJECT}.storage.supabase.co/storage/v1/s3'
 BACKUP_BUCKET = 'lti-production-backup'
 TARGET_PREFIX = 'lti-restore-check-'
 
@@ -28,6 +25,7 @@ backup_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backup_module)
 digest_object = backup_module.digest_object
 failure_details = backup_module.failure_details
+public_access_blocked = backup_module.public_access_blocked
 
 
 def target_name(run_id, attempt):
@@ -46,26 +44,11 @@ def snapshot(client, bucket):
 
 
 def restore_plan(client, snapshot_id=None):
-    if snapshot_id:
-        manifest, _, _ = backup_module.load_snapshot(client, BACKUP_BUCKET, snapshot_id)
-        return [{'key': row['key'], 'source_key': row['object_key'], 'size': row['size'],
-                 'sha256': row['sha256'], 'metadata': row['metadata']} for row in manifest['objects']]
-    # The original same-key backups remain unchanged. Snapshot metadata and blobs
-    # must never appear as extra legacy documents or be restored into the app.
-    return [{'key': key, 'source_key': key, 'size': size, 'etag': etag}
-            for key, size, etag in snapshot(client, BACKUP_BUCKET)
-            if not key.startswith(backup_module.SNAPSHOT_PREFIX)]
-
-
-def public_access_blocked(bucket, key):
-    # HEAD avoids downloading or emitting document contents even if access is wrong.
-    url = (f'https://{STAGING_PROJECT}.supabase.co/storage/v1/object/public/'
-           f'{quote(bucket, safe="")}/{quote(key, safe="/")}')
-    try:
-        with urlopen(Request(url, method='HEAD'), timeout=30) as response:
-            return False
-    except HTTPError as exc:
-        return exc.code in (400, 401, 403, 404)
+    if not snapshot_id:
+        raise ValueError('a completed snapshot ID is required; legacy restore is a separate procedure')
+    manifest, _, _ = backup_module.load_snapshot(client, BACKUP_BUCKET, snapshot_id)
+    return [{'key': row['key'], 'source_key': row['object_key'], 'size': row['size'],
+             'sha256': row['sha256'], 'metadata': row['metadata']} for row in manifest['objects']]
 
 
 def open_document(path, key, content_type):
@@ -165,7 +148,7 @@ def cleanup_previous_run(client, target, expected_count=None, snapshot_id=None):
     if [(row[0], row[1]) for row in restored] != sorted((row['key'], row['size']) for row in plan):
         raise ValueError('cleanup recovery inventory differs from backup; refusing deletion')
     # Matching names/sizes alone cannot identify an owned recovery run. Verify
-    # actual content before deleting anything, including legacy restores.
+    # actual content before deleting anything.
     for row in plan:
         expected = (row['size'], row['sha256']) if 'sha256' in row else digest_object(client.get_object(Bucket=BACKUP_BUCKET, Key=row['source_key']))
         if digest_object(client.get_object(Bucket=target, Key=row['key'])) != expected:
@@ -276,15 +259,15 @@ def restore(client, target, expected_count=None, viewer=open_document, access_pr
 
 
 def main():
-    required = ('TEST_ACCESS_KEY_ID', 'TEST_SECRET_ACCESS_KEY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT')
+    required = ('BACKUP_ACCESS_KEY_ID', 'BACKUP_SECRET_ACCESS_KEY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RESTORE_SNAPSHOT_ID')
     if any(not os.environ.get(name) for name in required):
         raise SystemExit('restore test configuration is incomplete; nothing restored')
     import boto3
     from botocore.config import Config
     target = target_name(os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT'])
     client = boto3.client('s3', endpoint_url=ENDPOINT,
-                          aws_access_key_id=os.environ['TEST_ACCESS_KEY_ID'],
-                          aws_secret_access_key=os.environ['TEST_SECRET_ACCESS_KEY'],
+                          aws_access_key_id=os.environ['BACKUP_ACCESS_KEY_ID'],
+                          aws_secret_access_key=os.environ['BACKUP_SECRET_ACCESS_KEY'],
                           region_name='ap-southeast-1',
                           config=Config(signature_version='s3v4', s3={'addressing_style': 'path'},
                                         connect_timeout=30, read_timeout=90,
@@ -298,7 +281,7 @@ def main():
         requested_count = os.environ.get('EXPECTED_FILES', '').strip()
         if requested_count and not re.fullmatch(r'[1-9][0-9]{0,9}', requested_count):
             raise ValueError('invalid expected file count')
-        expected_count = int(requested_count) if requested_count else (None if snapshot_id else 539)
+        expected_count = int(requested_count) if requested_count else None
         if os.environ.get('CLEANUP_ONLY_RUN_ID'):
             previous_target = target_name(os.environ['CLEANUP_ONLY_RUN_ID'], os.environ.get('CLEANUP_ONLY_RUN_ATTEMPT', '1'))
             result = cleanup_previous_run(client, previous_target, expected_count, snapshot_id=snapshot_id)
