@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node check.mjs && node record-access.mjs && node record-read-policy-equivalence.mjs"
+    "test": "node check.mjs && node record-access.mjs && node record-read-policy-equivalence.mjs && node record-read-context-equivalence.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8"
