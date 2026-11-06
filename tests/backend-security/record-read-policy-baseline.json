@@ -1,0 +1,210 @@
+{
+  "description": "Schema-only baseline for SELECT-policy optimization. No application rows, identities, credentials, tokens, or user data. Source catalog definitions inspected 2026-11-06. Intentionally fixed; changing this baseline requires explicit review and updating the pinned SHA-256 in record-read-policy-equivalence.mjs.",
+  "access": {
+    "columns": [
+      {
+        "name": "kind",
+        "type": "text",
+        "default": null,
+        "nullable": "NO",
+        "generated": "NEVER",
+        "expression": null
+      },
+      {
+        "name": "id",
+        "type": "text",
+        "default": null,
+        "nullable": "NO",
+        "generated": "NEVER",
+        "expression": null
+      },
+      {
+        "name": "owner_id",
+        "type": "uuid",
+        "default": "auth.uid()",
+        "nullable": "NO",
+        "generated": "NEVER",
+        "expression": null
+      },
+      {
+        "name": "data",
+        "type": "jsonb",
+        "default": null,
+        "nullable": "NO",
+        "generated": "NEVER",
+        "expression": null
+      },
+      {
+        "name": "school_id",
+        "type": "text",
+        "default": null,
+        "nullable": "YES",
+        "generated": "ALWAYS",
+        "expression": "(data ->> 'schoolId'::text)"
+      },
+      {
+        "name": "student_id",
+        "type": "text",
+        "default": null,
+        "nullable": "YES",
+        "generated": "ALWAYS",
+        "expression": "(data ->> 'studentId'::text)"
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": null,
+        "nullable": "YES",
+        "generated": "ALWAYS",
+        "expression": "(data ->> 'status'::text)"
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "default": "1",
+        "nullable": "NO",
+        "generated": "NEVER",
+        "expression": null
+      }
+    ],
+    "functions": [
+      {
+        "name": "lti_feature_enabled",
+        "definition": "CREATE OR REPLACE FUNCTION public.lti_feature_enabled(tab_name text)\n RETURNS boolean\n LANGUAGE sql\n STABLE\n SET search_path TO ''\nAS $function$\n select case when public.lti_role()='admin' then true when public.lti_role() is null then false else\n coalesce((select s.feature_settings->>(public.lti_role()||':'||tab_name) from public.lti_schools s where s.id=public.lti_school()),'enabled')='enabled' end\n$function$\n"
+      },
+      {
+        "name": "lti_read_record",
+        "definition": "CREATE OR REPLACE FUNCTION public.lti_read_record(k text, o uuid, s text, student text, d jsonb)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select coalesce(public.lti_role() is not null and (\n public.lti_role()='admin' or\n (k in ('references','notes') and o=auth.uid()) or\n (k='papers' and (d->>'status'='公開中' or (public.lti_role()='teacher' and s=public.lti_school()))) or\n (k='paper_threads' and public.lti_role()='teacher' and s=public.lti_school()) or\n (k in ('assignments','materials') and s=public.lti_school()) or\n (k='submissions' and s=public.lti_school() and (student=auth.uid()::text or public.lti_role()='teacher')) or\n (k='feedback' and s=public.lti_school() and (student=auth.uid()::text or public.lti_role()='teacher')) or\n -- Notices created before targeting was added have no targetType and remain global.\n (k='notices' and (\n   coalesce(d->>'targetType','all')='all' or\n   (d->>'targetType'='specific' and jsonb_typeof(d->'targetSchoolIds')='array' and (d->'targetSchoolIds') ? public.lti_school())\n )) or\n (k='contests' and (d->>'targetType'='all' or (d->'targetSchoolIds') ? public.lti_school()))\n ),false)\n$function$\n"
+      },
+      {
+        "name": "lti_record_feature_enabled",
+        "definition": "CREATE OR REPLACE FUNCTION public.lti_record_feature_enabled(record_kind text, record_status text, writing boolean)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE\n SET search_path TO ''\nAS $function$\nbegin\n if public.lti_role()='admin' then return true; end if;\n if public.lti_role() is null then return false; end if;\n case record_kind\n when 'papers' then return (not writing and record_status='公開中' and public.lti_feature_enabled('みんなの論文')) or (public.lti_role()='teacher' and public.lti_feature_enabled('探究論文の公開申請'));\n when 'paper_threads' then return public.lti_feature_enabled('探究論文の公開申請');\n when 'materials' then return public.lti_feature_enabled('教材');\n when 'contests' then return public.lti_feature_enabled('学会・コンテスト');\n when 'references' then return public.lti_feature_enabled('学術論文の検索');\n when 'assignments','submissions' then\n   if public.lti_role()='student' then return public.lti_feature_enabled('課題・提出物'); end if;\n   return public.lti_feature_enabled('課題配信') or (not writing and public.lti_feature_enabled('進捗管理'));\n when 'feedback' then\n   if public.lti_role()='student' then return public.lti_feature_enabled('先生からのフィードバック'); end if;\n   return public.lti_feature_enabled('AI添削');\n else return true;\n end case;\nend $function$\n"
+      },
+      {
+        "name": "lti_record_feature_enabled",
+        "definition": "CREATE OR REPLACE FUNCTION public.lti_record_feature_enabled(record_kind text, record_status text, writing boolean, record_data jsonb)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE\n SET search_path TO ''\nAS $function$\nbegin\n if public.lti_role()='admin' then return true; end if;\n if public.lti_role() is null then return false; end if;\n if record_kind='feedback' and public.lti_role()='teacher' then\n  -- Existing hand-written comments have assignmentId and an empty review result.\n  -- A client-controlled source label alone must never enable the manual route.\n  if record_data->>'source'='manual' or nullif(record_data->>'assignmentId','') is not null then\n   if coalesce(record_data->>'source','manual')<>'manual'\n      or nullif(record_data->>'assignmentId','') is null\n      or record_data->'result' is distinct from '{\"corrections\":[],\"advice\":[],\"nextExperiments\":[]}'::jsonb\n      or not public.lti_feature_enabled('進捗管理') then\n    return false;\n   end if;\n   -- History remains readable after an assignment is withdrawn. Writes must be\n   -- attached to a real same-school assignment and an actual same-school pupil.\n   return not writing or (\n    record_data->>'schoolId'=public.lti_school()\n    and exists(select 1 from public.lti_records a where a.kind='assignments'\n      and a.id=record_data->>'assignmentId' and a.school_id=public.lti_school())\n    and exists(select 1 from public.lti_profiles p where p.id::text=record_data->>'studentId'\n      and p.role='student' and p.school_id=public.lti_school())\n   );\n  end if;\n  if coalesce(record_data->>'source','ai')<>'ai' then return false; end if;\n end if;\n return public.lti_record_feature_enabled(record_kind,record_status,writing);\nend\n$function$\n"
+      },
+      {
+        "name": "lti_role",
+        "definition": "CREATE OR REPLACE FUNCTION public.lti_role()\n RETURNS text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select p.role from public.lti_profiles p where p.id=auth.uid() and p.active\n and not p.must_change_password\n and (p.session_valid_after='-infinity'::timestamptz or exists (\n  select 1 from auth.sessions s where s.id::text=auth.jwt()->>'session_id' and s.user_id=p.id and s.created_at>=p.session_valid_after\n ))\n and ((p.role<>'admin' and not exists(select 1 from auth.mfa_factors f where f.user_id=p.id and f.status='verified')) or auth.jwt()->>'aal'='aal2')\n$function$\n"
+      },
+      {
+        "name": "lti_school",
+        "definition": "CREATE OR REPLACE FUNCTION public.lti_school()\n RETURNS text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select school_id from public.lti_profiles where id=auth.uid() and public.lti_role() is not null\n$function$\n"
+      }
+    ],
+    "policies": [
+      {
+        "cmd": "DELETE",
+        "qual": "lti_record_feature_enabled(kind, status, true, data)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "lti_records",
+        "permissive": "RESTRICTIVE",
+        "policyname": "feature_delete",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "lti_records",
+        "permissive": "RESTRICTIVE",
+        "policyname": "feature_insert",
+        "schemaname": "public",
+        "with_check": "lti_record_feature_enabled(kind, status, true, data)"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "(lti_record_feature_enabled(kind, status, false, data) AND ((kind <> 'papers'::text) OR (status <> '公開中'::text) OR lti_feature_enabled('みんなの論文'::text) OR (school_id = lti_school())))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "lti_records",
+        "permissive": "RESTRICTIVE",
+        "policyname": "feature_read",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "lti_record_feature_enabled(kind, status, true, data)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "lti_records",
+        "permissive": "RESTRICTIVE",
+        "policyname": "feature_update",
+        "schemaname": "public",
+        "with_check": "lti_record_feature_enabled(kind, status, true, data)"
+      },
+      {
+        "cmd": "DELETE",
+        "qual": "((lti_role() = 'admin'::text) OR ((kind = ANY (ARRAY['references'::text, 'notes'::text])) AND (owner_id = auth.uid()) AND (lti_role() IS NOT NULL)) OR ((kind = 'submissions'::text) AND (lti_role() = 'student'::text) AND (student_id = (auth.uid())::text) AND (school_id = lti_school())) OR ((kind = ANY (ARRAY['assignments'::text, 'feedback'::text, 'paper_threads'::text])) AND (lti_role() = 'teacher'::text) AND (school_id = lti_school())) OR ((kind = 'papers'::text) AND (lti_role() = 'teacher'::text) AND (school_id = lti_school()) AND (status <> '公開中'::text)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "lti_records",
+        "permissive": "PERMISSIVE",
+        "policyname": "record_delete",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "lti_records",
+        "permissive": "PERMISSIVE",
+        "policyname": "record_insert",
+        "schemaname": "public",
+        "with_check": "((owner_id = auth.uid()) AND (lti_role() IS NOT NULL) AND ((lti_role() = 'admin'::text) OR ((kind = ANY (ARRAY['references'::text, 'notes'::text])) AND (school_id = lti_school())) OR ((kind = ANY (ARRAY['papers'::text, 'paper_threads'::text, 'assignments'::text, 'feedback'::text])) AND (lti_role() = 'teacher'::text) AND (school_id = lti_school())) OR ((kind = 'submissions'::text) AND (lti_role() = 'student'::text) AND (school_id = lti_school()) AND (student_id = (auth.uid())::text))))"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "lti_read_record(kind, owner_id, school_id, student_id, data)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "lti_records",
+        "permissive": "PERMISSIVE",
+        "policyname": "record_read",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "((lti_role() = 'admin'::text) OR ((kind = ANY (ARRAY['references'::text, 'notes'::text])) AND (owner_id = auth.uid()) AND (lti_role() IS NOT NULL)) OR ((kind = ANY (ARRAY['assignments'::text, 'papers'::text, 'paper_threads'::text, 'feedback'::text])) AND (lti_role() = 'teacher'::text) AND (school_id = lti_school())) OR ((kind = ANY (ARRAY['submissions'::text, 'feedback'::text])) AND (lti_role() = 'student'::text) AND (student_id = (auth.uid())::text) AND (school_id = lti_school())))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "lti_records",
+        "permissive": "PERMISSIVE",
+        "policyname": "record_update",
+        "schemaname": "public",
+        "with_check": "((lti_role() = 'admin'::text) OR ((kind = ANY (ARRAY['references'::text, 'notes'::text])) AND (owner_id = auth.uid()) AND (lti_role() IS NOT NULL)) OR ((kind = ANY (ARRAY['assignments'::text, 'papers'::text, 'paper_threads'::text, 'feedback'::text])) AND (lti_role() = 'teacher'::text) AND (school_id = lti_school())) OR ((kind = ANY (ARRAY['submissions'::text, 'feedback'::text])) AND (lti_role() = 'student'::text) AND (student_id = (auth.uid())::text) AND (school_id = lti_school())))"
+      }
+    ]
+  },
+  "metadata": {
+    "constraints": [
+      "CHECK ((id = (data ->> 'id'::text)))",
+      "CHECK (((jsonb_typeof(data) = 'object'::text) AND (octet_length((data)::text) < 2097152)))",
+      "CHECK ((kind = ANY (ARRAY['papers'::text, 'paper_threads'::text, 'assignments'::text, 'submissions'::text, 'materials'::text, 'contests'::text, 'notices'::text, 'feedback'::text, 'references'::text, 'notes'::text])))",
+      "FOREIGN KEY (owner_id) REFERENCES auth.users(id)",
+      "PRIMARY KEY (kind, id)",
+      "FOREIGN KEY (school_id) REFERENCES lti_schools(id)"
+    ]
+  },
+  "supportPolicies": [
+    "create policy profile_read on public.lti_profiles as PERMISSIVE for SELECT to authenticated using (((id = auth.uid()) OR (lti_role() = 'admin'::text) OR ((lti_role() = 'teacher'::text) AND (school_id = lti_school())) OR ((lti_role() = 'student'::text) AND (school_id = lti_school()) AND (role = 'teacher'::text) AND active)));",
+    "create policy school_admin on public.lti_schools as PERMISSIVE for ALL to authenticated using ((lti_role() = 'admin'::text)) with check ((lti_role() = 'admin'::text));",
+    "create policy school_read on public.lti_schools as PERMISSIVE for SELECT to authenticated using (((lti_role() = 'admin'::text) OR (id = lti_school())));"
+  ]
+}
