@@ -1,6 +1,7 @@
 // Offline guarded CTE-policy migration and durable rollback regression. All data is synthetic.
 import assert from 'node:assert/strict';
 import {verifyGeneratedStatusPhase} from './generated-status-phase.mjs';
+import {verifyProfileReadPhase} from './profile-read-phase.mjs';
 import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
@@ -31,6 +32,8 @@ const cteSql=await readSql(new URL('../../supabase/migrations/20261106065802_opt
 const rollbackSql=await readSql(new URL('../../supabase/rollbacks/20261106065802_optimize_record_read_cte.sql',import.meta.url),'utf8');
 const statusSql=await readSql(new URL('../../supabase/migrations/20261107050622_optimize_record_read_generated_status.sql',import.meta.url),'utf8');
 const statusRollbackSql=await readSql(new URL('../../supabase/rollbacks/20261107050622_optimize_record_read_generated_status.sql',import.meta.url),'utf8');
+const profileSql=await readSql(new URL('../../supabase/migrations/20261107054325_optimize_profile_read_initplans.sql',import.meta.url),'utf8');
+const profileRollbackSql=await readSql(new URL('../../supabase/rollbacks/20261107054325_optimize_profile_read_initplans.sql',import.meta.url),'utf8');
 const db=new PGlite(),started=performance.now();
 const A='POLICY-FIXTURE-A',B='POLICY-FIXTURE-B',DELETED='POLICY-FIXTURE-DELETED';
 const uid=n=>'40000000-0000-4000-a000-'+String(n).padStart(12,'0');
@@ -162,10 +165,14 @@ try{
  create table auth.users(id uuid primary key);
  create table auth.sessions(id uuid,user_id uuid,created_at timestamptz);
  create table auth.mfa_factors(user_id uuid,status text);
- create table public.lti_profiles(id uuid primary key,role text not null,school_id text,active boolean not null default true,must_change_password boolean not null default false,session_valid_after timestamptz not null default '-infinity',deleted_at timestamptz);
+ create table public.lti_profiles(id uuid primary key,role text not null,school_id text,active boolean not null default true,must_change_password boolean not null default false,session_valid_after timestamptz not null default '-infinity',deleted_at timestamptz,name text,class text,dept text,theme text);
  create table public.lti_schools(id text primary key,feature_settings jsonb default '{}',deleted_at timestamptz);
  grant usage on schema public,auth to authenticated,anon;
- grant select on public.lti_profiles,public.lti_schools to authenticated;
+ grant select on public.lti_schools to authenticated;
+ grant truncate,references,trigger,maintain on public.lti_profiles to anon;
+ grant select,truncate,references,trigger,maintain on public.lti_profiles to authenticated;
+ grant all on public.lti_profiles to service_role;
+ grant update(name,class,dept,theme) on public.lti_profiles to authenticated;
  alter table public.lti_profiles enable row level security;
  alter table public.lti_schools enable row level security;`);
  const cols=access.columns.map(c=>c.name+' '+c.type+(c.generated==='ALWAYS'?' generated always as ('+c.expression+') stored':c.default?' default '+c.default:'')+(c.nullable==='NO'?' not null':''));
@@ -176,10 +183,13 @@ try{
  const publicHelperSignatures=['public.lti_role()','public.lti_school()','public.lti_feature_enabled(text)','public.lti_read_record(text,uuid,text,text,jsonb)','public.lti_record_feature_enabled(text,text,boolean)','public.lti_record_feature_enabled(text,text,boolean,jsonb)'];
  for(const signature of publicHelperSignatures)await db.exec('revoke all on function '+signature+' from public,anon,authenticated,service_role;grant execute on function '+signature+' to authenticated,service_role;');
  for(const line of supportPolicies)await db.exec(line);
+ // Mirror the existing name/class/dept/theme column-only write surface. These
+ // checks cover RLS target selection, not production expiry/retired triggers.
+ await db.exec('create policy profile_self_update on public.lti_profiles as permissive for update to authenticated using (id=auth.uid()) with check (id=auth.uid());');
  for(const p of access.policies)await db.exec(`create policy ${p.policyname} on public.lti_records as ${p.permissive} for ${p.cmd} to authenticated`+(p.qual?' using ('+p.qual+')':'')+(p.with_check?' with check ('+p.with_check+')':''));
  await db.query('insert into public.lti_schools(id,deleted_at) values($1,null),($2,null),($3,$4)',[A,B,DELETED,'2026-01-01T00:00:00Z']);
  await db.query('insert into auth.users select id from jsonb_to_recordset($1::jsonb) as x(id uuid)',[JSON.stringify(Object.values(actors))]);
- await db.query('insert into public.lti_profiles select id,role,school_id,active,must_change_password,session_valid_after,deleted_at from jsonb_to_recordset($1::jsonb) as x(id uuid,role text,school_id text,active boolean,must_change_password boolean,session_valid_after timestamptz,deleted_at timestamptz)',[JSON.stringify(Object.values(actors))]);
+ await db.query('insert into public.lti_profiles(id,role,school_id,active,must_change_password,session_valid_after,deleted_at) select id,role,school_id,active,must_change_password,session_valid_after,deleted_at from jsonb_to_recordset($1::jsonb) as x(id uuid,role text,school_id text,active boolean,must_change_password boolean,session_valid_after timestamptz,deleted_at timestamptz)',[JSON.stringify(Object.values(actors))]);
  await db.query('insert into auth.sessions(id,user_id,created_at) values($1,$2,$3),($4,$2,$5),($6,$7,$5)',[sid(1),actors.sessionGated.id,'2025-12-31T23:59:59Z',sid(2),'2026-01-01T00:00:01Z',sid(3),actors.teacherB.id]);
  await db.query("insert into auth.mfa_factors(user_id,status) values($1,'verified'),($2,'verified'),($3,'unverified')",[actors.mfaTeacher.id,actors.mfaStudent.id,actors.teacherA.id]);
  await db.query('insert into public.lti_records(kind,id,owner_id,data) select kind,id,owner_id,data from jsonb_to_recordset($1::jsonb) as x(kind text,id text,owner_id uuid,data jsonb)',[JSON.stringify(rows)]);
@@ -308,6 +318,9 @@ try{
 
   result.generatedStatus=await verifyGeneratedStatusPhase({db,root,evaluate,claims,profileClaims,catalogState,withoutPolicyExpressions,expected:after,actors,schoolId:A,migrationSql:statusSql,rollbackSql:statusRollbackSql});
   console.log(JSON.stringify({phase:'generated-status',matchedScenarios:result.generatedStatus.matchedScenarios,typedStatusCases:result.generatedStatus.typedStatusCases,rollbackRestored:result.generatedStatus.rollbackRestored}));
+
+  result.profileRead=await verifyProfileReadPhase({db,root,claims,profileClaims,actors,schoolId:A,evaluate,expected:after,migrationSql:profileSql,rollbackSql:profileRollbackSql,statusSql,statusRollbackSql});
+  console.log(JSON.stringify({phase:'profile-read',syntheticProfiles:result.profileRead.syntheticProfiles,identities:result.profileRead.identities,updateCases:result.profileRead.updateCases,rollbackRestored:result.profileRead.rollbackRestored}));
 
   await checkDriftRefusal(rollbackSql,'rollback');
   // The matrix deliberately changes synthetic feature settings. Restore its
