@@ -1,5 +1,6 @@
 // Offline guarded CTE-policy migration and durable rollback regression. All data is synthetic.
 import assert from 'node:assert/strict';
+import {verifyGeneratedStatusPhase} from './generated-status-phase.mjs';
 import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
@@ -28,6 +29,8 @@ assert.match(patchText,/ALTER POLICY feature_read ON public\.lti_records/);
 const contextSql=await readSql(new URL('../../supabase/migrations/20261106051403_optimize_record_read_context.sql',import.meta.url),'utf8');
 const cteSql=await readSql(new URL('../../supabase/migrations/20261106065802_optimize_record_read_cte.sql',import.meta.url),'utf8');
 const rollbackSql=await readSql(new URL('../../supabase/rollbacks/20261106065802_optimize_record_read_cte.sql',import.meta.url),'utf8');
+const statusSql=await readSql(new URL('../../supabase/migrations/20261107050622_optimize_record_read_generated_status.sql',import.meta.url),'utf8');
+const statusRollbackSql=await readSql(new URL('../../supabase/rollbacks/20261107050622_optimize_record_read_generated_status.sql',import.meta.url),'utf8');
 const db=new PGlite(),started=performance.now();
 const A='POLICY-FIXTURE-A',B='POLICY-FIXTURE-B',DELETED='POLICY-FIXTURE-DELETED';
 const uid=n=>'40000000-0000-4000-a000-'+String(n).padStart(12,'0');
@@ -302,6 +305,9 @@ try{
   console.log(JSON.stringify({phase:'after-patch',scenarios:scenarios.length,syntheticRows:rows.length,networkAttempts}));
   const after=await evaluate();
   assert.deepEqual(after,before,'Each actor, feature setting, full visible set and school-filtered visible set must be identical');
+
+  result.generatedStatus=await verifyGeneratedStatusPhase({db,root,evaluate,claims,profileClaims,catalogState,withoutPolicyExpressions,expected:after,actors,schoolId:A,migrationSql:statusSql,rollbackSql:statusRollbackSql});
+  console.log(JSON.stringify({phase:'generated-status',matchedScenarios:result.generatedStatus.matchedScenarios,typedStatusCases:result.generatedStatus.typedStatusCases,rollbackRestored:result.generatedStatus.rollbackRestored}));
 
   await checkDriftRefusal(rollbackSql,'rollback');
   // The matrix deliberately changes synthetic feature settings. Restore its
