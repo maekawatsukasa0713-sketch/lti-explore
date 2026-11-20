@@ -231,7 +231,12 @@ function persistence({rpc = async () => ({error: null}), reload = async () => {}
   const state = {busy: false, error: '', committedRefreshFailure: false, rpcCalls: [], reloads: 0};
   const context = {
     Error,
-    lock: {current: busy}, ref: {current: []},
+    lock: {current: busy}, ref: {current: []}, activeSave: {current: null}, identityEpoch: 1,
+    savedRecordScope: () => ({type: 'kinds', kinds: ['references']}),
+    refresh: {isCurrent: () => true, committed: () => 1, request: async () => {
+      state.reloads++;
+      try { await reload(true); return {status: 'applied'}; } catch (error) { return {status: 'failed', error}; }
+    }},
     supabase: {rpc: async (name, args) => { state.rpcCalls.push({name, args}); return rpc(name, args); }},
     reload: async strict => { state.reloads++; return reload(strict); },
     setBusy: value => { state.busy = value; },
