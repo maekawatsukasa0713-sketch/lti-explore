@@ -6,9 +6,10 @@ import type { Session } from '@supabase/supabase-js';
 import {supabase,recoveryOnArrival} from './client';
 import {APP_URL,APP_ENV,PASSWORD_RECOVERY_URL} from './supabase-config';
 import {schoolLoginEmail,PasswordChange,MfaSetup,AccountManagement} from './accounts';
+import {createRefreshCoordinator,mergeRecordRows,recordPermissionKey,recordSchoolFilter,savedRecordScope,type RecordRow,type RefreshJob} from './cloud-refresh';
 export {supabase} from './client';
 export type Profile = { deleted_at?:string|null; attendance_number?:number|null; login_id?:string|null; must_change_password?:boolean; initial_password_expires_at?:string|null; session_valid_after?:string; id:string; school_id:string|null; role:'admin'|'teacher'|'student'; active:boolean; name:string; class:string; dept:string; theme:string };
-type Row = { kind:string; id:string; owner_id:string; data:any; version:number };
+type Row = RecordRow;
 type School = {id:string;name:string;feature_settings?:FeatureSettings;deleted_at?:string|null};
 export type SaveResult = {ok:true;refreshed:boolean}|{ok:false;error:string};
 type Store = { profile:Profile; profiles:Profile[]; schools:School[]; rows:Row[]; save:(kind:string, before:any[], next:any[])=>Promise<SaveResult>; reload:()=>Promise<void>; signOut:()=>Promise<void> };
@@ -128,30 +129,80 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
  const [savedButRefreshFailed,setSavedButRefreshFailed]=useState(false);
  const [entry,setEntry]=useState(false);const [loginType,setLoginType]=useState<'school'|'email'>('school');const [loginSchool,setLoginSchool]=useState(()=>{try{return localStorage.getItem('lti-login-school')||'';}catch{return '';}});const [loginId,setLoginId]=useState('');const [aal,setAal]=useState<string|null>(null);const [nextAal,setNextAal]=useState<string|null>(null);const [showMfa,setShowMfa]=useState(false);const [showPassword,setShowPassword]=useState(false);
  const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [message,setMessage]=useState('');const [mode,setMode]=useState<'login'|'reset'>('login');const [recovery,setRecovery]=useState(recoveryOnArrival);const [passwordAgain,setPasswordAgain]=useState('');
- const ref=useRef<Row[]>([]);const lock=useRef(false);const generation=useRef(0);
- useEffect(()=>{let alive=true;const {data:{subscription}}=supabase.auth.onAuthStateChange((event,next)=>{if(!alive)return;setSession(next);setInitial(false);if(event==='PASSWORD_RECOVERY')setRecovery(true);});supabase.auth.getSession().then(({data,error})=>{if(alive){if(error)setAuthError(error.message);setSession(data.session);setInitial(false);}});return()=>{alive=false;subscription.unsubscribe();};},[]);
+ const ref=useRef<Row[]>([]);const lock=useRef(false);const activeSave=useRef<symbol|null>(null);
+ const identity=useRef<{id:string|undefined;token:string|undefined}>({id:undefined,token:undefined});
+ const assurance=useRef<{aal:string|null;nextAal:string|null}>({aal:null,nextAal:null});
+ const loadedContext=useRef<{permissionKey:string;token:string|undefined}|null>(null);
+ const runRefresh=useRef<(job:RefreshJob)=>Promise<'applied'|'invalidated'>>(async()=> 'invalidated');
+ const coordinator=useRef<ReturnType<typeof createRefreshCoordinator>|null>(null);
+ if(!coordinator.current)coordinator.current=createRefreshCoordinator(job=>runRefresh.current(job));
+ const refresh=coordinator.current;
+ const identityEpoch=refresh.epoch;
+ const clearStore=()=>{setProfile(null);setRows([]);ref.current=[];setProfiles([]);setSchools([]);setDataReady(false);loadedContext.current=null;};
+ const invalidateIdentity=()=>{refresh.invalidate();activeSave.current=null;lock.current=false;setBusy(false);setLoading(false);setError('');setSavedButRefreshFailed(false);clearStore();};
+ const acceptSession=(next:Session|null)=>{if(identity.current.id!==next?.user.id)invalidateIdentity();identity.current={id:next?.user.id,token:next?.access_token};setSession(next);};
+ useEffect(()=>{let alive=true;let authEvents=0;const {data:{subscription}}=supabase.auth.onAuthStateChange((event,next)=>{if(!alive)return;authEvents++;acceptSession(next);setInitial(false);if(event==='PASSWORD_RECOVERY')setRecovery(true);});const version=authEvents;supabase.auth.getSession().then(({data,error})=>{if(alive&&version===authEvents){if(error)setAuthError(error.message);acceptSession(data.session);setInitial(false);}});return()=>{alive=false;refresh.invalidate();subscription.unsubscribe();};},[]);
  const userId=session?.user.id;
  const waiting=initial||!!session&&(!profile||!aal||loading);
  useEffect(()=>{setSlow(false);if(!waiting)return;const timer=setTimeout(()=>setSlow(true),15000);return()=>clearTimeout(timer);},[waiting,userId]);
- useEffect(()=>{let alive=true;setAal(null);setNextAal(null);if(session)supabase.auth.mfa.getAuthenticatorAssuranceLevel().then(({data,error})=>{if(alive){if(error)setError(error.message);else{setAal(data.currentLevel);setNextAal(data.nextLevel);}}});return()=>{alive=false;};},[session?.access_token]);
- const reload=async(throwOnError=false)=>{
-  const token=++generation.current;
-  if(!userId){setProfile(null);setRows([]);ref.current=[];setProfiles([]);setSchools([]);return;}
+ useEffect(()=>{let alive=true;assurance.current={aal:null,nextAal:null};setAal(null);setNextAal(null);if(session)supabase.auth.mfa.getAuthenticatorAssuranceLevel().then(({data,error})=>{if(alive){if(error)setError(error.message);else{assurance.current={aal:data.currentLevel,nextAal:data.nextLevel};setAal(data.currentLevel);setNextAal(data.nextLevel);}}});return()=>{alive=false;};},[session?.access_token]);
+ runRefresh.current=async(job)=>{
+  const actor=identity.current;
+  const valid=()=>job.isCurrent()&&identity.current.id===actor.id&&identity.current.token===actor.token;
+  if(!actor.id){if(valid())clearStore();return valid()?'applied':'invalidated';}
   setLoading(true);
   try {
-   const {data:p,error:pe}=await supabase.from('lti_profiles').select('*').eq('id',userId).single();if(pe)throw pe;
-   if(token!==generation.current)return;setProfile(p);
-   if(!p.active){setRows([]);ref.current=[];setProfiles([]);setSchools([]);return;}
-   const listAll=async(table:string)=>{const data:any[]=[];for(let offset=0;;offset+=500){const r=await supabase.from(table).select('*').order('id').range(offset,offset+499);if(r.error)throw r.error;data.push(...r.data);if(r.data.length<500)return {data};}};
-   const [pr,sc]=await Promise.all([listAll('lti_profiles'),listAll('lti_schools')]);
-   const all:Row[]=[];for(let offset=0;;offset+=500){const r=await supabase.from('lti_records').select('*').order('kind').order('id').range(offset,offset+499);if(r.error)throw r.error;all.push(...r.data);if(r.data.length<500)break;}
-   if(token!==generation.current)return;setProfiles(pr.data.filter(p=>!p.deleted_at));setSchools(sc.data.filter(s=>!s.deleted_at));setRows(all);ref.current=all;setDataReady(true);setError('');
-  }catch(e){if(token===generation.current)setError(e instanceof Error?e.message:'データを取得できませんでした');if(throwOnError)throw e;}finally{if(token===generation.current)setLoading(false);}
+   const {data:initialProfile,error:pe}=await supabase.from('lti_profiles').select('*').eq('id',actor.id).single();if(pe)throw pe;let p=initialProfile;
+   if(!valid())return 'invalidated';
+   if(!p.active){setProfile(p);setRows([]);ref.current=[];setProfiles([]);setSchools([]);loadedContext.current=null;setDataReady(true);setError('');return 'applied';}
+   const listAll=async(table:string)=>{const data:any[]=[];for(let offset=0;;offset+=500){if(!valid())return {data};const r=await supabase.from(table).select('*').order('id').range(offset,offset+499);if(r.error)throw r.error;data.push(...r.data);if(r.data.length<500)return {data};}};
+   let [pr,sc]=await Promise.all([listAll('lti_profiles'),listAll('lti_schools')]);
+   if(!valid())return 'invalidated';
+   let permissionKey=recordPermissionKey(p,sc.data,assurance.current.aal,assurance.current.nextAal);
+   let scope=job.scope;
+   if(scope.type==='kinds'&&(!loadedContext.current||loadedContext.current.token!==actor.token||loadedContext.current.permissionKey!==permissionKey)){scope={type:'full'};clearStore();}
+   const readRecords=async()=>{const all:Row[]=[];for(let offset=0;;offset+=500){if(!valid())return all;let query=supabase.from('lti_records').select('*');if(scope.type==='kinds')query=query.in('kind',[...scope.kinds]);const schoolId=recordSchoolFilter(scope,p);if(schoolId!==null)query=query.eq('school_id',schoolId);const r=await query.order('kind').order('id').range(offset,offset+499);if(r.error)throw r.error;all.push(...r.data);if(r.data.length<500)return all;}};
+   let all=await readRecords();
+   if(scope.type==='kinds'){
+    // Re-read authorization metadata after the scoped records request. Using
+    // the pre-read objects here could keep unrelated cached rows after a role,
+    // school or feature change made while the request was in flight.
+    for(let check=0;;check++){
+     let checkedProfile:Profile,checkedSchools:{data:any[]};
+     try{
+      const checked=await supabase.from('lti_profiles').select('*').eq('id',actor.id).single();if(checked.error)throw checked.error;
+      checkedProfile=checked.data;checkedSchools=await listAll('lti_schools');
+     }catch(error){if(valid())clearStore();throw error;}
+     if(!valid())return 'invalidated';
+     const checkedKey=recordPermissionKey(checkedProfile,checkedSchools.data,assurance.current.aal,assurance.current.nextAal);
+     p=checkedProfile;sc=checkedSchools;
+     if(checkedKey===permissionKey)break;
+     clearStore();
+     if(check>=1)throw new Error('閲覧権限が続けて変更されました。保存済みデータを再読み込みしてください。');
+     permissionKey=checkedKey;scope={type:'full'};
+     pr=await listAll('lti_profiles');all=await readRecords();
+    }
+   }
+   if(!valid())return 'invalidated';
+   const complete=mergeRecordRows(ref.current,all,scope);
+   setProfile(p);setProfiles(pr.data.filter(p=>!p.deleted_at));setSchools(sc.data.filter(s=>!s.deleted_at));setRows(complete);ref.current=complete;loadedContext.current={permissionKey,token:actor.token};setDataReady(true);setError('');setSavedButRefreshFailed(false);
+   return 'applied';
+  }finally{if(job.isCurrent())setLoading(false);}
  };
- useEffect(()=>{setDataReady(false);setProfile(null);setRows([]);ref.current=[];setError('');void reload();return()=>{generation.current++;};},[userId]);
- const signOut=async()=>{generation.current++;const {error}=await supabase.auth.signOut();if(error){setError(error.message);return;}setSession(null);setProfile(null);setPassword('');setRows([]);ref.current=[];setRecovery(false);};
+ const reload=async(throwOnError=false)=>{
+  const result=await refresh.request({type:'full'},{epoch:identityEpoch,fresh:true});
+  if(result.status==='applied')return;
+  const failure=result.status==='failed'?result.error:new Error('ログイン状態または保存状況が変わりました。もう一度表示を更新してください。');
+  if(result.status==='failed'&&refresh.isCurrent(identityEpoch))setError((failure as any)?.message||'データを取得できませんでした');
+  if(throwOnError)throw failure;
+ };
+ useEffect(()=>{void reload();},[userId,session?.access_token]);
+ const signOut=async()=>{const actor=identity.current;invalidateIdentity();setPassword('');setRecovery(false);const epoch=refresh.epoch;const {error}=await supabase.auth.signOut();if(!refresh.isCurrent(epoch)||identity.current.id!==actor.id||identity.current.token!==actor.token)return;if(error){setError(error.message);void refresh.request({type:'full'},{epoch,fresh:true});return;}acceptSession(null);};
  const save=async(kind:string,before:any[],next:any[]):Promise<SaveResult>=>{
+  if(!refresh.isCurrent(identityEpoch))return {ok:false,error:'ログイン状態が変わりました。画面を開き直してください。'};
   if(lock.current){const message='別の保存が処理中です。完了後にもう一度操作してください。';setError(message);return {ok:false,error:message};}
+  const saveToken=Symbol('save');activeSave.current=saveToken;
+  const current=()=>refresh.isCurrent(identityEpoch)&&activeSave.current===saveToken;
   lock.current=true;setBusy(true);setError('');setSavedButRefreshFailed(false);
   let committed=false;
   try {
@@ -174,13 +225,13 @@ export function CloudGate({children}:{children:(p:Profile,logout:()=>Promise<voi
     const threads=(items:any[])=>items.filter(p=>p.messages?.length).map(p=>({id:String(p.id),schoolId:p.schoolId,messages:p.messages}));
     diff('paper_threads',threads(before),threads(next));
    }else diff(kind,before,next);
-   if(ops.length){const {error}=await supabase.rpc('lti_save_records',{ops});if(error)throw error;committed=true;await reload(true);}
+   if(ops.length){const {error}=await supabase.rpc('lti_save_records',{ops});if(error)throw error;committed=true;const revision=refresh.committed(identityEpoch);if(revision===null)return {ok:true,refreshed:false};const result=await refresh.request(savedRecordScope(ops),{epoch:identityEpoch,minimumRevision:revision});if(result.status!=='applied')throw result.status==='failed'?result.error:new Error('ログイン状態が変わりました。');}
    return {ok:true,refreshed:true};
   }catch(e){
-   if(committed){setSavedButRefreshFailed(true);setError('保存は完了していますが、表示を更新できませんでした。再送信せず、保存済みデータを再読み込みしてください。');return {ok:true,refreshed:false};}
-   const message=e instanceof Error?e.message:(e as any)?.message||'保存を確認できませんでした';setError(message);return {ok:false,error:message};
+   if(committed){if(current()){setSavedButRefreshFailed(true);setError('保存は完了していますが、表示を更新できませんでした。再送信せず、保存済みデータを再読み込みしてください。');}return {ok:true,refreshed:false};}
+   const message=e instanceof Error?e.message:(e as any)?.message||'保存を確認できませんでした';if(current())setError(message);return {ok:false,error:message};
   }
-  finally{lock.current=false;setBusy(false);}
+  finally{if(current()){activeSave.current=null;lock.current=false;setBusy(false);}}
  };
  const auth=async(e:React.FormEvent)=>{e.preventDefault();setAuthError('');setMessage('');setBusy(true);try{
   if(mode==='reset'){const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:PASSWORD_RECOVERY_URL});if(error)throw error;setMessage('登録済みの場合、再設定メールが届きます。');}
