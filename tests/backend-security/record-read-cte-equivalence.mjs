@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {verifyGeneratedStatusPhase} from './generated-status-phase.mjs';
 import {verifyProfileReadPhase} from './profile-read-phase.mjs';
+import {verifyCombinedRecordPhase} from './record-combined-phase.mjs';
 import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
@@ -34,6 +35,8 @@ const statusSql=await readSql(new URL('../../supabase/migrations/20261107050622_
 const statusRollbackSql=await readSql(new URL('../../supabase/rollbacks/20261107050622_optimize_record_read_generated_status.sql',import.meta.url),'utf8');
 const profileSql=await readSql(new URL('../../supabase/migrations/20261107054325_optimize_profile_read_initplans.sql',import.meta.url),'utf8');
 const profileRollbackSql=await readSql(new URL('../../supabase/rollbacks/20261107054325_optimize_profile_read_initplans.sql',import.meta.url),'utf8');
+const combinedSql=await readSql(new URL('../../supabase/migrations/20261120050323_consolidate_record_read_context.sql',import.meta.url),'utf8');
+const combinedRollbackSql=await readSql(new URL('../../supabase/rollbacks/20261120050323_consolidate_record_read_context.sql',import.meta.url),'utf8');
 const db=new PGlite(),started=performance.now();
 const A='POLICY-FIXTURE-A',B='POLICY-FIXTURE-B',DELETED='POLICY-FIXTURE-DELETED';
 const uid=n=>'40000000-0000-4000-a000-'+String(n).padStart(12,'0');
@@ -321,6 +324,9 @@ try{
 
   result.profileRead=await verifyProfileReadPhase({db,root,claims,profileClaims,actors,schoolId:A,evaluate,expected:after,migrationSql:profileSql,rollbackSql:profileRollbackSql,statusSql,statusRollbackSql});
   console.log(JSON.stringify({phase:'profile-read',syntheticProfiles:result.profileRead.syntheticProfiles,identities:result.profileRead.identities,updateCases:result.profileRead.updateCases,rollbackRestored:result.profileRead.rollbackRestored}));
+
+  result.combinedRecordRead=await verifyCombinedRecordPhase({db,root,claims,profileClaims,scenarios,rows,featureCases,actors,schoolId:A,catalogState,withoutPolicyExpressions,expected:after,migrationSql:combinedSql,rollbackSql:combinedRollbackSql,statusSql,statusRollbackSql});
+  console.log(JSON.stringify({phase:'combined-record-read',matchedScenarios:result.combinedRecordRead.matchedScenarios,typedStatusCases:result.combinedRecordRead.typedStatusCases,writeCases:result.combinedRecordRead.writeCasesPerPass,rollbackRestored:result.combinedRecordRead.rollbackRestored}));
 
   await checkDriftRefusal(rollbackSql,'rollback');
   // The matrix deliberately changes synthetic feature settings. Restore its
